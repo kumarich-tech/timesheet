@@ -1,0 +1,87 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <title>{% block title %}Табель{% endblock %}</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    :root {
+      --bianca-orange: #ff4b00;
+      --bianca-black: #000000;
+      --bianca-white: #ffffff;
+    }
+
+    body {
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    }
+
+    .bianca-active {
+      background-color: var(--bianca-orange) !important;
+      color: white !important;
+    }
+
+    .bianca-inactive {
+      background-color: #f3f4f6;
+      color: #111827;
+    }
+
+    .bianca-inactive:hover {
+      background-color: #e5e7eb;
+    }
+  </style>
+</head>
+<body class="bg-white text-black">
+  <div class="w-full px-4 max-w-none">
+
+    <!-- Логотип по центру -->
+    <div class="flex justify-center items-center h-[50px]">
+      <img src="{% static 'Logo.png' %}" alt="Bianca Logo" class="h-[150px] object-contain">
+    </div>
+
+    <!-- Навигация -->
+    <div class="mb-4 flex justify-start space-x-2 py-4 border-b border-gray-200">
+      {% with request.path as current_path %}
+        <a href="{% url 'timesheet' %}?month={{ month|date:'Y-m' }}"
+           class="px-4 py-2 rounded font-medium text-sm {% if 'timesheet' in current_path %}bianca-active{% else %}bianca-inactive{% endif %}">
+          📋 Табель
+        </a>
+        <a href="{% url 'services' %}?month={{ month|date:'Y-m' }}"
+           class="px-4 py-2 rounded font-medium text-sm {% if 'services' in current_path %}bianca-active{% else %}bianca-inactive{% endif %}">
+          🧰 Услуги
+        </a>
+        <a href="{% url 'report' %}?month={{ month|date:'Y-m' }}"
+           class="px-4 py-2 rounded font-medium text-sm {% if 'report' in current_path %}bianca-active{% else %}bianca-inactive{% endif %}">
+          💰 Финальный расчёт
+        </a>
+      {% endwith %}
+    </div>
+
+    {% block content %}
+    {% endblock %}
+  </div>
+
+  <!-- Подкраска ячеек -->
+  <script>
+    function updateCellColor(select) {
+      const cell = select.parentElement;
+      const value = select.value;
+      const colors = {
+        day: '#d1fae5',
+        night: '#bfdbfe',
+        vacation: '#fef9c3',
+        weekend: '#e5e7eb',
+        sick: '#fecaca',
+      };
+      cell.style.backgroundColor = colors[value] || 'transparent';
+    }
+
+    document.addEventListener("DOMContentLoaded", function () {
+      document.querySelectorAll("select[name^='shift_']").forEach(select => {
+        updateCellColor(select);
+        select.addEventListener("change", () => updateCellColor(select));
+      });
+    });
+  </script>
+</body>
+</html>

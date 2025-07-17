@@ -1,0 +1,196 @@
+{% extends "base.html" %}
+{% load custom_filters %}
+{% block title %}Табель{% endblock %}
+
+{% block content %}
+<h1 class="text-3xl font-bold mb-4 text-black">Табель за {{ month|date:"F Y" }}</h1>
+
+<!-- Шпаргалка -->
+<div class="mb-2 text-sm text-gray-700">
+  <span class="inline-block mr-4"><span class="font-bold text-green-700">Д</span> — День</span>
+  <span class="inline-block mr-4"><span class="font-bold text-blue-700">Н</span> — Ночь</span>
+  <span class="inline-block mr-4"><span class="font-bold text-gray-500">В</span> — Выходной</span>
+  <span class="inline-block mr-4"><span class="font-bold text-yellow-600">О</span> — Отпуск</span>
+  <span class="inline-block"><span class="font-bold text-red-600">Б</span> — Больничный</span>
+</div>
+
+<!-- Фильтр -->
+<form method="get" class="mb-4 flex flex-wrap gap-4 items-center text-sm">
+  <label class="font-semibold">Месяц:
+    <input type="month" name="month" value="{{ month|date:'Y-m' }}" class="border rounded px-2 py-1 text-sm">
+  </label>
+  <label class="font-semibold">Отдел:
+    <select name="department" class="border rounded px-2 py-1 text-sm">
+      <option value="">Все</option>
+      {% for dept in departments %}
+        <option value="{{ dept.id }}" {% if selected_department == dept.id|stringformat:"s" %}selected{% endif %}>{{ dept.name }}</option>
+      {% endfor %}
+    </select>
+  </label>
+  <button type="submit" class="px-4 py-2 rounded text-white bg-[var(--bianca-orange)] hover:bg-orange-600 font-semibold">Показать</button>
+  <button type="button" onclick="openAutoFillModal()" class="px-4 py-2 rounded text-white bg-gray-700 hover:bg-gray-800 font-semibold">⚙ Автозаполнить</button>
+</form>
+
+<!-- Табель -->
+<form method="POST">
+  {% csrf_token %}
+  <div class="overflow-x-auto border rounded-lg shadow">
+    <table class="table-auto min-w-full border-collapse text-xs">
+      <thead class="bg-gray-100 text-gray-800">
+        <tr>
+          <th class="border px-2 py-2 text-left w-[200px] font-semibold">Сотрудник</th>
+          {% for day in days %}
+            <th class="border px-2 py-2 text-center w-[48px] font-sm">{{ day }}</th>
+              {{ month|date:"Y-m" }}-{{ day|stringformat:"02d" | date:"D" }}
+            </th>
+          {% endfor %}
+          <th class="border px-1 py-1 text-center w-[40px] font-semibold">День</th>
+          <th class="border px-1 py-1 text-center w-[40px] font-semibold">Ночь</th>
+          <th class="border px-1 py-1 text-center w-[70px] font-semibold">Итого</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for employee in employees %}
+        <tr class="hover:bg-gray-50 text-sm">
+          <td class="border px-3 py-1 text-left whitespace-nowrap text-black">{{ employee.full_name }}</td>
+          {% for day in days %}
+            <td class="border px-1 py-1 text-center">
+              <div class="relative">
+                {% with val=schedule|get_item:employee.id|get_item:day %}
+                  <button type="button"
+                          class="shift-button rounded w-[32px] h-[28px] text-xs font-semibold bg-gray-100"
+                          data-emp="{{ employee.id }}" data-day="{{ day }}">
+                    {% for key, label in shift_choices %}{% if key == val %}{{ label }}{% endif %}{% endfor %}
+                  </button>
+                  <input type="hidden" name="shift_{{ employee.id }}_{{ day }}" value="{{ val }}">
+                {% endwith %}
+                <div class="shift-popover hidden absolute top-full left-0 mt-1 bg-white border rounded shadow text-xs z-50">
+                  {% for key, label in shift_choices %}
+                    <div class="cursor-pointer px-2 py-1 hover:bg-gray-100" data-value="{{ key }}" data-label="{{ label }}">{{ label }}</div>
+                  {% endfor %}
+                </div>
+              </div>
+            </td>
+          {% endfor %}
+          <td class="border px-1 py-1 text-center bg-green-100 font-semibold">{{ salary|get_item:employee.id|get_item:"day" }}</td>
+          <td class="border px-1 py-1 text-center bg-blue-100 font-semibold">{{ salary|get_item:employee.id|get_item:"night" }}</td>
+          <td class="border px-1 py-1 text-center font-bold bg-yellow-100 text-black">
+            {{ salary|get_item:employee.id|get_item:"total"|floatformat:0 }} ₽
+          </td>
+        </tr>
+        {% if employee.is_fixed_salary %}
+        <tr class="text-xs text-gray-500 italic bg-gray-100">
+          <td colspan="{{ days|length|add:'4' }}" class="px-2 py-1 text-left">
+            ⚙ Оклад: {{ employee.fixed_salary|floatformat:0 }} ₽ +
+            Премия: {{ employee.bonus|floatformat:0 }} ₽ (расчёт не зависит от смен)
+          </td>
+        </tr>
+        {% endif %}
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  <!-- Кнопки -->
+  <div class="mt-4 flex items-center">
+    <button type="submit" class="px-4 py-2 bg-[var(--bianca-orange)] text-white rounded hover:bg-orange-600">💾 Сохранить табель</button>
+    <a href="{% url 'export_timesheet' %}?month={{ month|date:'Y-m' }}{% if selected_department %}&department={{ selected_department }}{% endif %}"
+       class="ml-4 px-4 py-2 bg-black text-white rounded hover:bg-gray-800">📥 Выгрузить в Excel</a>
+  </div>
+</form>
+
+<!-- Модалка -->
+<div id="autofill-modal" class="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50 hidden">
+  <div class="bg-white p-6 rounded shadow-lg w-[300px]">
+    <h2 class="text-lg font-bold mb-4">Выберите шаблон графика</h2>
+    <select id="schedule-template" class="w-full border px-2 py-1 mb-4">
+      <option value="2_2">2/2 (день/день/вых/вых)</option>
+      <option value="5_2">5/2 (пн–пт — день, сб/вс — выходной)</option>
+      <option value="night_3_3">3/3 (ночь/ночь/ночь/вых/вых/вых)</option>
+    </select>
+    <div class="flex justify-end space-x-2">
+      <button onclick="closeAutoFillModal()" class="text-gray-600">Отмена</button>
+      <button onclick="applyAutoFill()" class="text-white bg-[var(--bianca-orange)] px-3 py-1 rounded hover:bg-orange-600">Применить</button>
+    </div>
+  </div>
+</div>
+
+<script>
+const lastShifts = {
+  {% for emp in employees %}
+    {{ emp.id }}: "{{ last_shifts|get_item:emp.id|default_if_none:'' }}",
+  {% endfor %}
+};
+
+document.addEventListener("DOMContentLoaded", function () {
+  document.querySelectorAll(".shift-button").forEach(button => {
+    const container = button.parentElement;
+    const popover = container.querySelector(".shift-popover");
+    const hiddenInput = container.querySelector("input");
+
+    button.addEventListener("click", () => {
+      document.querySelectorAll(".shift-popover").forEach(p => p.classList.add("hidden"));
+      popover.classList.remove("hidden");
+    });
+
+    popover.querySelectorAll("div[data-value]").forEach(option => {
+      option.addEventListener("click", () => {
+        hiddenInput.value = option.dataset.value;
+        button.textContent = option.dataset.label;
+        popover.classList.add("hidden");
+      });
+    });
+  });
+
+  document.addEventListener("click", (e) => {
+    if (!e.target.closest(".relative")) {
+      document.querySelectorAll(".shift-popover").forEach(p => p.classList.add("hidden"));
+    }
+  });
+});
+
+function openAutoFillModal() {
+  document.getElementById("autofill-modal").classList.remove("hidden");
+}
+function closeAutoFillModal() {
+  document.getElementById("autofill-modal").classList.add("hidden");
+}
+function applyAutoFill() {
+  const template = document.getElementById("schedule-template").value;
+  const monthStart = "{{ month|date:'Y-m' }}";
+  const labelMap = { day: "Д", night: "Н", weekend: "В", vacation: "О", sick: "Б" };
+
+  document.querySelectorAll("input[name^='shift_']").forEach(input => {
+    const parts = input.name.split("_");
+    const empId = parts[1];
+    const day = parseInt(parts[2]);
+
+    let shift = "";
+    let offset = 0;
+
+    if (template === "2_2") {
+      const cycle = ["day", "day", "weekend", "weekend"];
+      const prev = lastShifts[empId];
+      offset = cycle.includes(prev) ? (cycle.indexOf(prev) + 1) % cycle.length : 0;
+      shift = cycle[(offset + day - 1) % cycle.length];
+    }
+    if (template === "5_2") {
+      const d = new Date(`${monthStart}-${String(day).padStart(2, '0')}`);
+      shift = (d.getDay() === 0 || d.getDay() === 6) ? "weekend" : "day";
+    }
+    if (template === "night_3_3") {
+      const cycle = ["night", "night", "night", "weekend", "weekend", "weekend"];
+      const prev = lastShifts[empId];
+      offset = cycle.includes(prev) ? (cycle.indexOf(prev) + 1) % cycle.length : 0;
+      shift = cycle[(offset + day - 1) % cycle.length];
+    }
+
+    input.value = shift;
+    const button = input.parentElement.querySelector(".shift-button");
+    if (button) button.textContent = labelMap[shift] || "";
+  });
+
+  closeAutoFillModal();
+}
+</script>
+{% endblock %}

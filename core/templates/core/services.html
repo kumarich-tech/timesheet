@@ -1,0 +1,90 @@
+{% extends "base.html" %}
+{% load dict_filters %}
+{% block title %}Услуги{% endblock %}
+
+{% block content %}
+<h1 class="text-2xl font-bold text-gray-900 mb-4">Услуги за {{ month|date:"F Y" }}</h1>
+
+<form method="get" class="mb-4 flex flex-wrap gap-4 items-center">
+  <label class="font-semibold text-gray-800">Месяц:
+    <input type="month" id="month" name="month"
+           value="{{ month|date:'Y-m' }}"
+           class="border rounded px-2 py-1 text-sm shadow-sm focus:ring-2 focus:ring-orange-500 focus:border-orange-500">
+  </label>
+
+  <label class="font-semibold text-gray-800">Отдел:
+    <select name="department" class="border rounded px-2 py-1 text-sm shadow-sm focus:ring-2 focus:ring-orange-500 focus:border-orange-500">
+      <option value="">Все</option>
+      {% for dept in departments %}
+        <option value="{{ dept.id }}" {% if selected_department == dept.id|stringformat:"s" %}selected{% endif %}>
+          {{ dept.name }}
+        </option>
+      {% endfor %}
+    </select>
+  </label>
+
+  <button type="submit"
+          class="px-4 py-1 bg-orange-600 text-white rounded hover:bg-orange-700 text-sm font-semibold shadow">
+    Показать
+  </button>
+</form>
+
+<form method="POST">
+  {% csrf_token %}
+  <div class="overflow-x-auto border border-gray-300 rounded shadow-sm">
+    <table class="w-full border-collapse text-sm text-gray-800">
+      <thead class="bg-gray-100 text-xs text-gray-700">
+        <tr>
+          <th class="border px-3 py-2 text-left bg-white w-[280px]">Сотрудник</th>
+          {% for service in services %}
+            <th class="border px-2 py-1 text-center">{{ service.name }}</th>
+          {% endfor %}
+          <th class="border px-2 py-1 text-center bg-white w-[100px]">Сумма (₽)</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for employee in employees %}
+        <tr class="hover:bg-orange-50 transition-colors duration-150">
+          <td class="border px-3 py-2 whitespace-nowrap bg-white font-medium">
+            {{ employee.full_name }}
+            {% if employee.is_fixed_salary %}
+              <span class="text-xs text-gray-500">(Оклад)</span>
+            {% else %}
+              <span class="text-xs text-gray-500">(Сдельно)</span>
+            {% endif %}
+          </td>
+
+          {% for service in services %}
+          {% key_pair employee.id service.id as pair %}
+          <td class="border px-2 py-1 text-center bg-white w-[80px]">
+            {% if service.for_salary_based == employee.is_fixed_salary %}
+              <input type="number" name="s_{{ employee.id }}_{{ service.id }}"
+                     value="{{ data|get_item:pair|default:0 }}"
+                     class="w-full text-center border rounded text-sm px-1 py-0.5 focus:ring-1 focus:ring-orange-500 focus:border-orange-500">
+            {% else %}
+              <input type="number" disabled class="w-full text-center border rounded text-sm bg-gray-100 cursor-not-allowed">
+            {% endif %}
+          </td>
+          {% endfor %}
+
+          <td class="border px-2 py-1 text-center font-bold bg-green-100 text-green-800">
+            {{ summary|get_item:employee.id|floatformat:0 }}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  <div class="mt-6 flex items-center gap-4">
+    <button type="submit"
+            class="px-4 py-2 bg-orange-600 text-white rounded hover:bg-orange-700 font-semibold shadow">
+      💾 Сохранить услуги
+    </button>
+    <a href="{% url 'export_services' %}?month={{ month|date:'Y-m' }}{% if selected_department %}&department={{ selected_department }}{% endif %}"
+       class="px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700 font-semibold shadow">
+      📥 Выгрузить Excel
+    </a>
+  </div>
+</form>
+{% endblock %}

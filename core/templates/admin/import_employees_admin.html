@@ -1,0 +1,10 @@
+{% extends "admin/base_site.html" %}
+{% block content %}
+<h1>Импорт сотрудников из Excel</h1>
+<form method="post" enctype="multipart/form-data">
+  {% csrf_token %}
+  <input type="file" name="xlsx_file" accept=".xlsx" required class="vTextField">
+  <button type="submit" class="default">Загрузить</button>
+</form>
+<p>Файл должен содержать: ФИО, Отдел, Должность, Ставка дневная, Ставка ночная</p>
+{% endblock %}
