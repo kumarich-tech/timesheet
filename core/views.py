@@ -37,6 +37,16 @@ def timesheet_view(request):
     first_day = parse_month(request)
     year, month = first_day.year, first_day.month
     days_in_month = monthrange(year, month)[1]
+    weekday_labels = ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"]
+    day_info = {}
+    today = date.today()
+    for d in range(1, days_in_month + 1):
+        current = date(year, month, d)
+        day_info[d] = {
+            "label": weekday_labels[current.weekday()],
+            "is_weekend": current.weekday() >= 5,
+            "is_today": current == today,
+        }
 
     department_id = request.GET.get("department")
     employees = Employee.objects.all()
@@ -91,16 +101,17 @@ def timesheet_view(request):
     return render(request, "core/timesheet.html", {
         "employees": employees,
         "days": range(1, days_in_month + 1),
+        "day_info": day_info,
         "month": first_day,
         "schedule": schedule_map,
         "salary": salary_summary,
         "shift_choices": [
-    ("day", "Д"),
-    ("night", "Н"),
-    ("weekend", "В"),
-    ("vacation", "О"),
-    ("sick", "Б"),
-],
+            ("day", "Д"),
+            ("night", "Н"),
+            ("weekend", "В"),
+            ("vacation", "О"),
+            ("sick", "Б"),
+        ],
         "departments": departments,
         "selected_department": department_id,
         "last_shifts": last_shift_map,

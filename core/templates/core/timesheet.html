@@ -38,15 +38,22 @@
     <table class="table-auto min-w-full border-collapse text-xs">
       <thead class="bg-gray-100 text-gray-800">
         <tr>
-          <th class="border px-2 py-2 text-left w-[200px] font-semibold">Сотрудник</th>
+          <th class="border px-2 py-2 text-left w-[200px] font-semibold" rowspan="2">Сотрудник</th>
           {% for day in days %}
-            <th class="border px-2 py-2 text-center w-[48px] font-sm">{{ day }}</th>
-              {{ month|date:"Y-m" }}-{{ day|stringformat:"02d" | date:"D" }}
-            </th>
+            {% with info=day_info|get_item:day %}
+              <th class="border px-2 py-1 text-center w-[48px] font-sm {% if info.is_today %}bg-yellow-100{% elif info.is_weekend %}bg-red-100{% endif %}">{{ day }}</th>
+            {% endwith %}
           {% endfor %}
-          <th class="border px-1 py-1 text-center w-[40px] font-semibold">День</th>
-          <th class="border px-1 py-1 text-center w-[40px] font-semibold">Ночь</th>
-          <th class="border px-1 py-1 text-center w-[70px] font-semibold">Итого</th>
+          <th class="border px-1 py-1 text-center w-[40px] font-semibold" rowspan="2">День</th>
+          <th class="border px-1 py-1 text-center w-[40px] font-semibold" rowspan="2">Ночь</th>
+          <th class="border px-1 py-1 text-center w-[70px] font-semibold" rowspan="2">Итого</th>
+        </tr>
+        <tr>
+          {% for day in days %}
+            {% with info=day_info|get_item:day %}
+              <th class="border px-2 py-1 text-center w-[48px] text-[10px] {% if info.is_today %}bg-yellow-100{% elif info.is_weekend %}bg-red-100{% endif %}">{{ info.label }}</th>
+            {% endwith %}
+          {% endfor %}
         </tr>
       </thead>
       <tbody>
@@ -54,7 +61,8 @@
         <tr class="hover:bg-gray-50 text-sm">
           <td class="border px-3 py-1 text-left whitespace-nowrap text-black">{{ employee.full_name }}</td>
           {% for day in days %}
-            <td class="border px-1 py-1 text-center">
+            {% with info=day_info|get_item:day %}
+            <td class="border px-1 py-1 text-center {% if info.is_today %}bg-yellow-50{% elif info.is_weekend %}bg-red-50{% endif %}">
               <div class="relative">
                 {% with val=schedule|get_item:employee.id|get_item:day %}
                   <button type="button"
@@ -71,6 +79,7 @@
                 </div>
               </div>
             </td>
+            {% endwith %}
           {% endfor %}
           <td class="border px-1 py-1 text-center bg-green-100 font-semibold">{{ salary|get_item:employee.id|get_item:"day" }}</td>
           <td class="border px-1 py-1 text-center bg-blue-100 font-semibold">{{ salary|get_item:employee.id|get_item:"night" }}</td>
