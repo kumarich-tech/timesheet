@@ -9,5 +9,5 @@ urlpatterns = [
     path("report/export/", export_salary_report_xlsx, name="export_salary_report"),
     path("report/", report_view, name="report"),
     path("export-advance/", export_salary_advance_xlsx, name="export_salary_advance"),
-    path("export-salary/", export_salary_full_xlsx, name="export_salary_report"),
+    path("export-salary/", export_salary_full_xlsx, name="export_salary_full"),
 ]
