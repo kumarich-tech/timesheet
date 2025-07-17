@@ -1,5 +1,14 @@
 from django.urls import path
-from .views import timesheet_view, export_timesheet_xlsx, services_view, export_services_xlsx, export_salary_report_xlsx, report_view, export_salary_full_xlsx, export_salary_advance_xlsx
+from .views import (
+    timesheet_view,
+    export_timesheet_xlsx,
+    services_view,
+    export_services_xlsx,
+    export_salary_report_xlsx,
+    report_view,
+    export_salary_full_xlsx,
+    export_salary_advance_xlsx,
+)
 
 urlpatterns = [
     path("timesheet/", timesheet_view, name="timesheet"),

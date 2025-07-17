@@ -32,7 +32,6 @@ def parse_month(request):
 
 
 def timesheet_view(request):
-    from .models import Department  # добавим импорт, если ещё не был
 
     first_day = parse_month(request)
     year, month = first_day.year, first_day.month
