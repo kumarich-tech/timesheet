@@ -38,7 +38,6 @@
     <table class="table-auto min-w-full border-collapse text-xs">
       <thead class="bg-gray-100 text-gray-800">
         <tr>
-          {% endfor %}
         </tr>
       </thead>
       <tbody>
@@ -61,7 +60,6 @@
                 </div>
               </div>
             </td>
-            {% endwith %}
           {% endfor %}
           <td class="border px-1 py-1 text-center bg-green-100 font-semibold">{{ salary|get_item:employee.id|get_item:"day" }}</td>
           <td class="border px-1 py-1 text-center bg-blue-100 font-semibold">{{ salary|get_item:employee.id|get_item:"night" }}</td>
