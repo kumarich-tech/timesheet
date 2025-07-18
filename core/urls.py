@@ -8,11 +8,13 @@ from .views import (
     report_view,
     export_salary_full_xlsx,
     export_salary_advance_xlsx,
+    send_timesheet_email,
 )
 
 urlpatterns = [
     path("timesheet/", timesheet_view, name="timesheet"),
     path("timesheet/export/", export_timesheet_xlsx, name="export_timesheet"),
+    path("timesheet/send/", send_timesheet_email, name="send_timesheet"),
     path("services/", services_view, name="services"),
     path("services/export/", export_services_xlsx, name="export_services"),
     path("report/export/", export_salary_report_xlsx, name="export_salary_report"),
