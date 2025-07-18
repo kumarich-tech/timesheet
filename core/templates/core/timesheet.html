@@ -37,7 +37,7 @@
   {% csrf_token %}
   <div class="overflow-x-auto border rounded-lg shadow">
     <table class="table-auto min-w-full border-collapse text-xs">
-      <thead class="bg-gray-100 text-gray-800">
+      <thead class="sticky top-0 z-10 bg-gray-100 text-gray-800">
         <tr>
           <th class="border px-2 py-2 text-left w-[200px] font-semibold">Сотрудник</th>
           {% for info in days_info %}
