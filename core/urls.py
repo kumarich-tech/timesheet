@@ -8,6 +8,7 @@ from .views import (
     report_view,
     export_salary_full_xlsx,
     export_salary_advance_xlsx,
+    export_salary_final_xlsx,
 )
 
 urlpatterns = [
@@ -19,4 +20,5 @@ urlpatterns = [
     path("report/", report_view, name="report"),
     path("export-advance/", export_salary_advance_xlsx, name="export_salary_advance"),
     path("export-salary/", export_salary_full_xlsx, name="export_salary_full"),
+    path("export-final/", export_salary_final_xlsx, name="export_salary_final"),
 ]

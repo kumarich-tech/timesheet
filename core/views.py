@@ -421,8 +421,17 @@ def report_view(request):
                     "total": round(advance),
                 })
                 continue
+            elif report_type == "final":
+                worked_days_1_15 = sum(1 for d, s in shifts.items() if s in ["day", "night"] and d <= mid_month)
+                advance = (float(emp.fixed_salary) / working_days_total) * worked_days_1_15 if working_days_total else 0
+                total_salary -= advance
         else:
             total_salary = total_shift_salary + service_sum
+            if report_type == "final":
+                day_first = sum(1 for d, s in shifts.items() if s == "day" and d <= mid_month)
+                night_first = sum(1 for d, s in shifts.items() if s == "night" and d <= mid_month)
+                advance = day_first * float(emp.day_shift_rate) + night_first * float(emp.night_shift_rate)
+                total_salary -= advance
 
         salary_summary.append({
             "employee": emp,
@@ -450,7 +459,10 @@ def export_salary_full_xlsx(request):
 def export_salary_advance_xlsx(request):
     return generate_salary_report(request, full_month=False)
 
-def generate_salary_report(request, full_month=True):
+def export_salary_final_xlsx(request):
+    return generate_salary_report(request, full_month=True, final=True)
+
+def generate_salary_report(request, full_month=True, final=False):
     from calendar import monthrange
     from openpyxl import Workbook
     from openpyxl.styles import Font
@@ -474,7 +486,10 @@ def generate_salary_report(request, full_month=True):
 
     wb = Workbook()
     ws = wb.active
-    ws.title = "Аванс" if not full_month else "Зарплата"
+    if final:
+        ws.title = "Финальная"
+    else:
+        ws.title = "Аванс" if not full_month else "Зарплата"
 
     headers = ["ФИО", "Отдел", "Должность", "Дневных", "Ночных", "Сумма смен (₽)", "Сумма услуг (₽)", "Премия", "Итого (₽)"]
     ws.append(headers)
@@ -508,6 +523,18 @@ def generate_salary_report(request, full_month=True):
         bonus = float(emp.bonus or 0) if full_month else 0
         total = Decimal(salary_shift_sum) + (Decimal(service_sum) if full_month else Decimal(0)) + Decimal(bonus)
 
+        if final:
+            # Рассчитываем аванс за первую половину месяца
+            adv_day_count = sum(1 for d in range(1, 16) if shifts.get(d) == "day")
+            adv_night_count = sum(1 for d in range(1, 16) if shifts.get(d) == "night")
+            if emp.is_fixed_salary:
+                total_days = sum(1 for d in range(1, days_in_month + 1) if shifts.get(d) in ["day", "night"])
+                base = (emp.fixed_salary or 0) / total_days if total_days else 0
+                advance = Decimal(base * (adv_day_count + adv_night_count))
+            else:
+                advance = Decimal(adv_day_count * float(emp.day_shift_rate) + adv_night_count * float(emp.night_shift_rate))
+            total -= advance
+
         ws.append([
             emp.full_name,
             emp.department.name,
@@ -529,7 +556,11 @@ def generate_salary_report(request, full_month=True):
     wb.save(output)
     output.seek(0)
 
-    filename = f"{'avans' if not full_month else 'zarplata'}_{year}_{month:02d}.xlsx"
+    if final:
+        fname_prefix = 'final'
+    else:
+        fname_prefix = 'avans' if not full_month else 'zarplata'
+    filename = f"{fname_prefix}_{year}_{month:02d}.xlsx"
     response = HttpResponse(output, content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
     response["Content-Disposition"] = f"attachment; filename={filename}"
     return response

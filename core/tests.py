@@ -73,3 +73,42 @@ class ServicesViewTests(TestCase):
             employee=self.employee, service=self.service, month=month_first
         )
         self.assertEqual(record.quantity, 2)
+
+
+class SalaryReportTests(TestCase):
+    def setUp(self):
+        self.department = Department.objects.create(name="Dept")
+        self.position = Position.objects.create(name="Worker")
+
+        self.fixed_emp = Employee.objects.create(
+            full_name="Fixed", department=self.department,
+            position=self.position, is_fixed_salary=True,
+            fixed_salary=1000, bonus=200
+        )
+        self.hourly_emp = Employee.objects.create(
+            full_name="Hourly", department=self.department,
+            position=self.position, is_fixed_salary=False,
+            day_shift_rate=100, night_shift_rate=100
+        )
+        # 5 смен в первой половине и 5 во второй
+        for d in range(1, 6):
+            WorkSchedule.objects.create(employee=self.fixed_emp, date=date(2024, 1, d), shift="day")
+            WorkSchedule.objects.create(employee=self.hourly_emp, date=date(2024, 1, d), shift="day")
+        for d in range(16, 21):
+            WorkSchedule.objects.create(employee=self.fixed_emp, date=date(2024, 1, d), shift="day")
+            WorkSchedule.objects.create(employee=self.hourly_emp, date=date(2024, 1, d), shift="day")
+
+    def test_final_salary_deducts_advance(self):
+        url = reverse("report") + "?month=2024-01&type=final"
+        resp = self.client.get(url)
+        self.assertEqual(resp.status_code, 200)
+        summary = {row["employee"].full_name: row for row in resp.context["salary_summary"]}
+
+        fixed_row = summary["Fixed"]
+        # working days total for Jan 2024 is 23 -> per day 1000/23
+        expected_total = round(((1000/23)*10 + 200) - (1000/23)*5)
+        self.assertEqual(fixed_row["total"], expected_total)
+
+        hourly_row = summary["Hourly"]
+        expected_total = round(100*10 - 100*5)
+        self.assertEqual(hourly_row["total"], expected_total)

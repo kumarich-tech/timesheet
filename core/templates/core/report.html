@@ -76,7 +76,13 @@
 
 <!-- Выгрузка -->
 <div class="mt-6">
-  <a href="{% url 'export_salary_report' %}?month={{ month|date:'Y-m' }}{% if selected_department %}&department={{ selected_department }}{% endif %}"
+  {% if report_type == 'advance' %}
+  <a href="{% url 'export_salary_advance' %}?month={{ month|date:'Y-m' }}{% if selected_department %}&department={{ selected_department }}{% endif %}"
+  {% elif report_type == 'final' %}
+  <a href="{% url 'export_salary_final' %}?month={{ month|date:'Y-m' }}{% if selected_department %}&department={{ selected_department }}{% endif %}"
+  {% else %}
+  <a href="{% url 'export_salary_full' %}?month={{ month|date:'Y-m' }}{% if selected_department %}&department={{ selected_department }}{% endif %}"
+  {% endif %}
      class="inline-block px-5 py-2 bg-green-600 text-white rounded hover:bg-green-700 font-semibold shadow">
     📥 Выгрузить Excel-отчёт
   </a>
