@@ -11,7 +11,8 @@
   <span class="inline-block mr-4"><span class="font-bold text-blue-700">Н</span> — Ночь</span>
   <span class="inline-block mr-4"><span class="font-bold text-gray-500">В</span> — Выходной</span>
   <span class="inline-block mr-4"><span class="font-bold text-yellow-600">О</span> — Отпуск</span>
-  <span class="inline-block"><span class="font-bold text-red-600">Б</span> — Больничный</span>
+  <span class="inline-block mr-4"><span class="font-bold text-red-600">Б</span> — Больничный</span>
+  <span class="inline-block"><span class="font-bold text-purple-700">П</span> — Неполная</span>
 </div>
 
 <!-- Режим ввода -->
@@ -47,11 +48,11 @@
   {% csrf_token %}
   <div class="overflow-x-auto border rounded-lg shadow">
     <table class="table-auto min-w-full border-collapse text-xs">
-      <thead class="bg-gray-100 text-gray-800">
+      <thead class="sticky top-0 z-10 bg-gray-100 text-gray-800">
         <tr>
           <th class="border px-2 py-2 text-left w-[200px] font-semibold">Сотрудник</th>
           {% for info in days_info %}
-            <th class="border px-2 py-1 text-center w-[48px] font-sm {% if info.is_today %}bg-yellow-200{% elif info.is_weekend %}bg-gray-200{% endif %}">
+            <th class="border px-2 py-1 text-center w-[48px] font-sm {% if info.is_today %}bg-yellow-200 border-2 border-yellow-500{% elif info.is_weekend %}bg-gray-200{% endif %}">
               <div>{{ info.num }}</div>
               <div class="text-[10px] text-gray-600">{{ info.weekday }}</div>
             </th>
@@ -66,11 +67,12 @@
         <tr class="hover:bg-gray-50 text-sm">
           <td class="border px-3 py-1 text-left whitespace-nowrap text-black">{{ employee.full_name }}</td>
           {% for info in days_info %}
-            <td class="border px-1 py-1 text-center {% if info.is_weekend %}bg-gray-50{% endif %}">
+            <td class="border px-1 py-1 text-center {% if info.is_today %}border-2 border-yellow-500 bg-yellow-100{% elif info.is_weekend %}bg-gray-50{% endif %}">
               <div class="relative">
                 {% with val=schedule|get_item:employee.id|get_item:info.num %}
                   <button type="button"
-                          class="shift-button rounded w-[32px] h-[28px] text-xs font-semibold bg-gray-100"
+                          class="shift-button rounded w-[32px] h-[28px] text-xs font-semibold
+                          {% if val == 'day' %}bg-green-100{% elif val == 'night' %}bg-blue-100{% elif val == 'vacation' %}bg-yellow-100{% elif val == 'sick' %}bg-red-200{% elif val == 'weekend' %}bg-gray-200{% else %}bg-gray-100{% endif %}"
                           data-emp="{{ employee.id }}" data-day="{{ info.num }}">
                     {% for key, label in shift_choices %}{% if key == val %}{{ label }}{% endif %}{% endfor %}
                   </button>
@@ -145,10 +147,26 @@ const labelMap = { day: "Д", night: "Н", weekend: "В", vacation: "О", sick: 
 const valueMap = { "Д": "day", "Н": "night", "В": "weekend", "О": "vacation", "Б": "sick", "Нп": "partial", "д": "day", "н": "night", "в": "weekend", "о": "vacation", "б": "sick", "нп": "partial" };
 
 document.addEventListener("DOMContentLoaded", function () {
+  const colorClasses = {
+    day: "bg-green-100",
+    night: "bg-blue-100",
+    weekend: "bg-gray-200",
+    vacation: "bg-yellow-100",
+    sick: "bg-red-200",
+    none: "bg-gray-100",
+  };
+
+  function setButtonColor(btn, value) {
+    Object.values(colorClasses).forEach(c => btn.classList.remove(c));
+    btn.classList.add(colorClasses[value] || colorClasses.none);
+  }
+
   document.querySelectorAll(".shift-button").forEach(button => {
     const container = button.parentElement;
     const popover = container.querySelector(".shift-popover");
     const hiddenInput = container.querySelector("input");
+
+    setButtonColor(button, hiddenInput.value);
 
     button.addEventListener("click", () => {
       document.querySelectorAll(".shift-popover").forEach(p => p.classList.add("hidden"));
@@ -159,6 +177,7 @@ document.addEventListener("DOMContentLoaded", function () {
       option.addEventListener("click", () => {
         hiddenInput.value = option.dataset.value;
         button.textContent = option.dataset.label;
+        setButtonColor(button, option.dataset.value);
         popover.classList.add("hidden");
       });
     });
@@ -240,7 +259,6 @@ function closeAutoFillModal() {
 function applyAutoFill() {
   const templateId = document.getElementById("schedule-template").value;
   const sequence = templates[templateId] || [];
-
   document.querySelectorAll("input[name^='shift_']").forEach(input => {
     const parts = input.name.split("_");
     const empId = parts[1];
@@ -255,12 +273,6 @@ function applyAutoFill() {
 
     input.value = shift;
     const button = input.parentElement.querySelector(".shift-button");
-    if (button) button.textContent = labelMap[shift] || "";
-    const sel = input.parentElement.querySelector(".shift-select");
-    if (sel) sel.value = shift;
-    const txt = input.parentElement.querySelector(".shift-text");
-    if (txt) txt.value = labelMap[shift] || "";
-    if (sel && typeof updateCellColor !== "undefined") updateCellColor(sel);
   });
 
   closeAutoFillModal();

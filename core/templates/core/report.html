@@ -56,19 +56,28 @@
       </tr>
     </thead>
     <tbody>
-      {% for row in salary_summary %}
-      <tr class="hover:bg-orange-50">
-        <td class="border px-2 py-1 whitespace-nowrap">{{ row.employee.full_name }}</td>
-        <td class="border px-2 py-1 whitespace-nowrap">{{ row.employee.department.name }}</td>
-        <td class="border px-2 py-1 whitespace-nowrap">{{ row.employee.position.name }}</td>
-        <td class="border px-2 py-1 text-center">{{ row.day }}</td>
-        <td class="border px-2 py-1 text-center">{{ row.night }}</td>
-        <td class="border px-2 py-1 text-right">{{ row.shifts_sum }}</td>
-        <td class="border px-2 py-1 text-right">{{ row.services_sum }}</td>
-        <td class="border px-2 py-1 text-right font-bold bg-green-50 text-green-800">
-          {{ row.total }}
-        </td>
-      </tr>
+      {% regroup salary_summary by employee.department as dept_list %}
+      {% for dept in dept_list %}
+        {% for row in dept.list %}
+        <tr class="hover:bg-orange-50">
+          <td class="border px-2 py-1 whitespace-nowrap">{{ row.employee.full_name }}</td>
+          <td class="border px-2 py-1 whitespace-nowrap">{{ row.employee.department.name }}</td>
+          <td class="border px-2 py-1 whitespace-nowrap">{{ row.employee.position.name }}</td>
+          <td class="border px-2 py-1 text-center">{{ row.day }}</td>
+          <td class="border px-2 py-1 text-center">{{ row.night }}</td>
+          <td class="border px-2 py-1 text-right">{{ row.shifts_sum }}</td>
+          <td class="border px-2 py-1 text-right">{{ row.services_sum }}</td>
+          <td class="border px-2 py-1 text-right font-bold bg-green-50 text-green-800">{{ row.total }}</td>
+        </tr>
+        {% endfor %}
+        <tr class="bg-gray-100 font-semibold">
+          <td colspan="3" class="border px-2 py-1 text-right">Итого по отделу {{ dept.grouper.name }}</td>
+          <td class="border px-2 py-1 text-center">{{ department_totals|get_item:dept.grouper.id|get_item:"day" }}</td>
+          <td class="border px-2 py-1 text-center">{{ department_totals|get_item:dept.grouper.id|get_item:"night" }}</td>
+          <td class="border px-2 py-1"></td>
+          <td class="border px-2 py-1"></td>
+          <td class="border px-2 py-1 text-right font-bold">{{ department_totals|get_item:dept.grouper.id|get_item:"total"|floatformat:0 }}</td>
+        </tr>
       {% endfor %}
     </tbody>
   </table>
