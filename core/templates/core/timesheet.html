@@ -60,7 +60,8 @@
               <div class="relative">
                 {% with val=schedule|get_item:employee.id|get_item:info.num %}
                   <button type="button"
-                          class="shift-button rounded w-[32px] h-[28px] text-xs font-semibold bg-gray-100"
+                          class="shift-button rounded w-[32px] h-[28px] text-xs font-semibold
+                          {% if val == 'day' %}bg-green-100{% elif val == 'night' %}bg-blue-100{% elif val == 'vacation' %}bg-yellow-100{% elif val == 'sick' %}bg-red-200{% elif val == 'weekend' %}bg-gray-200{% else %}bg-gray-100{% endif %}"
                           data-emp="{{ employee.id }}" data-day="{{ info.num }}">
                     {% for key, label in shift_choices %}{% if key == val %}{{ label }}{% endif %}{% endfor %}
                   </button>
@@ -126,10 +127,26 @@ const lastShifts = {
 const templates = {{ templates_json|safe }};
 
 document.addEventListener("DOMContentLoaded", function () {
+  const colorClasses = {
+    day: "bg-green-100",
+    night: "bg-blue-100",
+    weekend: "bg-gray-200",
+    vacation: "bg-yellow-100",
+    sick: "bg-red-200",
+    none: "bg-gray-100",
+  };
+
+  function setButtonColor(btn, value) {
+    Object.values(colorClasses).forEach(c => btn.classList.remove(c));
+    btn.classList.add(colorClasses[value] || colorClasses.none);
+  }
+
   document.querySelectorAll(".shift-button").forEach(button => {
     const container = button.parentElement;
     const popover = container.querySelector(".shift-popover");
     const hiddenInput = container.querySelector("input");
+
+    setButtonColor(button, hiddenInput.value);
 
     button.addEventListener("click", () => {
       document.querySelectorAll(".shift-popover").forEach(p => p.classList.add("hidden"));
@@ -140,6 +157,7 @@ document.addEventListener("DOMContentLoaded", function () {
       option.addEventListener("click", () => {
         hiddenInput.value = option.dataset.value;
         button.textContent = option.dataset.label;
+        setButtonColor(button, option.dataset.value);
         popover.classList.add("hidden");
       });
     });
@@ -177,7 +195,10 @@ function applyAutoFill() {
 
     input.value = shift;
     const button = input.parentElement.querySelector(".shift-button");
-    if (button) button.textContent = labelMap[shift] || "";
+    if (button) {
+      button.textContent = labelMap[shift] || "";
+      setButtonColor(button, shift);
+    }
   });
 
   closeAutoFillModal();
