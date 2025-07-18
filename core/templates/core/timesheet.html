@@ -38,8 +38,6 @@
     <table class="table-auto min-w-full border-collapse text-xs">
       <thead class="bg-gray-100 text-gray-800">
         <tr>
-<<<<<<< HEAD
-=======
           <th class="border px-2 py-2 text-left w-[200px] font-semibold">Сотрудник</th>
           {% for info in days_info %}
             <th class="border px-2 py-1 text-center w-[48px] font-sm {% if info.is_today %}bg-yellow-200{% elif info.is_weekend %}bg-gray-200{% endif %}">
@@ -50,7 +48,6 @@
           <th class="border px-1 py-1 text-center w-[40px] font-semibold">День</th>
           <th class="border px-1 py-1 text-center w-[40px] font-semibold">Ночь</th>
           <th class="border px-1 py-1 text-center w-[70px] font-semibold">Итого</th>
->>>>>>> 2b4ed8b8c8e7a5b5279f613a15d95b9208ca98ad
         </tr>
       </thead>
       <tbody>
@@ -126,11 +123,25 @@ const lastShifts = {
   {% endfor %}
 };
 
+const shiftColors = {
+  day: '#d1fae5',
+  night: '#bfdbfe',
+  weekend: '#e5e7eb',
+  vacation: '#fef9c3',
+  sick: '#fecaca'
+};
+
+function setShiftColor(btn, value) {
+  btn.style.backgroundColor = shiftColors[value] || '#f3f4f6';
+}
+
 document.addEventListener("DOMContentLoaded", function () {
   document.querySelectorAll(".shift-button").forEach(button => {
     const container = button.parentElement;
     const popover = container.querySelector(".shift-popover");
     const hiddenInput = container.querySelector("input");
+
+    setShiftColor(button, hiddenInput.value);
 
     button.addEventListener("click", () => {
       document.querySelectorAll(".shift-popover").forEach(p => p.classList.add("hidden"));
@@ -141,6 +152,7 @@ document.addEventListener("DOMContentLoaded", function () {
       option.addEventListener("click", () => {
         hiddenInput.value = option.dataset.value;
         button.textContent = option.dataset.label;
+        setShiftColor(button, option.dataset.value);
         popover.classList.add("hidden");
       });
     });
@@ -191,7 +203,10 @@ function applyAutoFill() {
 
     input.value = shift;
     const button = input.parentElement.querySelector(".shift-button");
-    if (button) button.textContent = labelMap[shift] || "";
+    if (button) {
+      button.textContent = labelMap[shift] || "";
+      setShiftColor(button, shift);
+    }
   });
 
   closeAutoFillModal();
