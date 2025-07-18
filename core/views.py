@@ -390,7 +390,6 @@ def report_view(request):
         service_data.setdefault(r.employee.id, {})[r.service.id] = r.quantity
 
     salary_summary = []
-    working_days_total = get_working_days(year, month)
     mid_month = 15
 
     for emp in employees:
@@ -405,13 +404,19 @@ def report_view(request):
             service_sum += qty * float(s.price)
 
         if emp.is_fixed_salary:
-            worked_days = sum(1 for d, s in shifts.items() if s in ["day", "night"])
-            salary_base = (float(emp.fixed_salary) / working_days_total) * worked_days if working_days_total else 0
+            total_days = sum(1 for s in shifts.values() if s in ["day", "night"])
+            worked_days_1_15 = sum(
+                1 for d, s in shifts.items() if s in ["day", "night"] and d <= mid_month
+            )
+            salary_base = (
+                (float(emp.fixed_salary) / total_days) * total_days if total_days else 0
+            )
             total_salary = salary_base + float(emp.bonus) + service_sum
 
             if report_type == "advance":
-                worked_days_1_15 = sum(1 for d, s in shifts.items() if s in ["day", "night"] and d <= mid_month)
-                advance = (float(emp.fixed_salary) / working_days_total) * worked_days_1_15 if working_days_total else 0
+                advance = (
+                    (float(emp.fixed_salary) / total_days) * worked_days_1_15 if total_days else 0
+                )
                 salary_summary.append({
                     "employee": emp,
                     "day": worked_days_1_15,
@@ -440,10 +445,6 @@ def report_view(request):
         "report_type": report_type,
         "salary_summary": salary_summary,
     })
-def get_working_days(year, month):
-    total_days = monthrange(year, month)[1]
-    return sum(1 for d in range(1, total_days + 1) if date(year, month, d).weekday() < 5)
-
 def export_salary_full_xlsx(request):
     return generate_salary_report(request, full_month=True)
 
