@@ -1,4 +1,5 @@
 from django.contrib import admin
+from simple_history.admin import SimpleHistoryAdmin
 from django.urls import path
 from django.shortcuts import render, redirect
 from django.contrib import messages
@@ -27,7 +28,7 @@ class ServiceAdmin(admin.ModelAdmin):
     list_display = ("name", "price")
 
 @admin.register(WorkSchedule)
-class WorkScheduleAdmin(admin.ModelAdmin):
+class WorkScheduleAdmin(SimpleHistoryAdmin):
     list_display = ("employee", "date", "shift")
     list_filter = ("shift", "date")
 

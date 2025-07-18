@@ -1,5 +1,6 @@
 from datetime import date
 from io import BytesIO
+import json
 
 from django.test import TestCase, RequestFactory
 from django.urls import reverse
@@ -54,6 +55,26 @@ class TimesheetViewTests(TestCase):
         self.assertEqual(resp.status_code, 200)
         self.assertIn("schedule_templates", resp.context)
 
+    def test_apply_schedule_bulk(self):
+        emp2 = Employee.objects.create(full_name="Jane", department=self.department, position=self.position)
+        month = date.today().strftime("%Y-%m")
+        url = reverse("apply_schedule_bulk")
+        payload = {
+            "department_id": self.department.id,
+            "shift": "day",
+            "start_day": 1,
+            "end_day": 2,
+            "month": month,
+        }
+        resp = self.client.post(url, data=json.dumps(payload), content_type="application/json")
+        self.assertEqual(resp.status_code, 200)
+        first_day = date.today().replace(day=1)
+        for emp in [self.employee, emp2]:
+            for d in range(1, 3):
+                self.assertTrue(
+                    WorkSchedule.objects.filter(employee=emp, date=date(first_day.year, first_day.month, d), shift="day").exists()
+                )
+
 
 class ServicesViewTests(TestCase):
     def setUp(self):
@@ -87,6 +108,39 @@ class ServicesViewTests(TestCase):
             employee=self.employee, service=self.service, month=month_first
         )
         self.assertEqual(record.quantity, 2)
+
+
+class ImportServicesTests(TestCase):
+    def setUp(self):
+        self.department = Department.objects.create(name="Dep")
+        self.position = Position.objects.create(name="Worker")
+        self.employee = Employee.objects.create(
+            full_name="John Doe",
+            department=self.department,
+            position=self.position,
+        )
+        self.service_a = Service.objects.create(name="Service A", price=10)
+        self.service_b = Service.objects.create(name="Service B", price=20)
+
+    def _create_workbook(self):
+        wb = openpyxl.Workbook()
+        ws = wb.active
+        ws.append(["ФИО", "Месяц", self.service_a.name, self.service_b.name])
+        ws.append(["John Doe", "2024-01", 1, 2])
+        return wb
+
+    def test_import_services_creates_records(self):
+        wb = self._create_workbook()
+        buffer = BytesIO()
+        wb.save(buffer)
+        buffer.seek(0)
+        resp = self.client.post(reverse("import_services"), {"xlsx_file": buffer}, format="multipart")
+        self.assertEqual(resp.status_code, 302)
+        month = date(2024, 1, 1)
+        rec_a = EmployeeServiceRecord.objects.get(employee=self.employee, service=self.service_a, month=month)
+        rec_b = EmployeeServiceRecord.objects.get(employee=self.employee, service=self.service_b, month=month)
+        self.assertEqual(rec_a.quantity, 1)
+        self.assertEqual(rec_b.quantity, 2)
 
 
 class ParseMonthTests(TestCase):
