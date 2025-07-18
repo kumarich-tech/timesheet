@@ -14,6 +14,17 @@
   <span class="inline-block"><span class="font-bold text-red-600">Б</span> — Больничный</span>
 </div>
 
+<!-- Режим ввода -->
+<div class="mb-4 text-sm text-gray-700">
+  Режим ввода:
+  <select id="input-mode" class="border rounded px-1 py-0.5 text-sm">
+    <option value="buttons">Кнопки</option>
+    <option value="select">Список</option>
+    <option value="text">Текст</option>
+  </select>
+  <span id="paste-hint" class="ml-2 hidden">Используйте Ctrl+V, чтобы вставить последовательность смен через пробелы или перевод строки.</span>
+</div>
+
 <!-- Фильтр -->
 <form method="get" class="mb-4 flex flex-wrap gap-4 items-center text-sm">
   <label class="font-semibold">Месяц:
@@ -63,6 +74,13 @@
                           data-emp="{{ employee.id }}" data-day="{{ info.num }}">
                     {% for key, label in shift_choices %}{% if key == val %}{{ label }}{% endif %}{% endfor %}
                   </button>
+                  <select class="shift-select hidden w-[36px] h-[28px] text-xs" data-emp="{{ employee.id }}" data-day="{{ info.num }}">
+                    <option value=""></option>
+                    {% for key, label in shift_choices %}
+                      <option value="{{ key }}" {% if key == val %}selected{% endif %}>{{ label }}</option>
+                    {% endfor %}
+                  </select>
+                  <input type="text" class="shift-text hidden w-[32px] h-[28px] text-xs text-center border rounded" data-emp="{{ employee.id }}" data-day="{{ info.num }}" value="{% for key, label in shift_choices %}{% if key == val %}{{ label }}{% endif %}{% endfor %}">
                   <input type="hidden" name="shift_{{ employee.id }}_{{ info.num }}" value="{{ val }}">
                 {% endwith %}
                 <div class="shift-popover hidden absolute top-full left-0 mt-1 bg-white border rounded shadow text-xs z-50">
@@ -123,6 +141,8 @@ const lastShifts = {
   {% endfor %}
 };
 const templates = {{ templates_json|safe }};
+const labelMap = { day: "Д", night: "Н", weekend: "В", vacation: "О", sick: "Б", partial: "Нп" };
+const valueMap = { "Д": "day", "Н": "night", "В": "weekend", "О": "vacation", "Б": "sick", "Нп": "partial", "д": "day", "н": "night", "в": "weekend", "о": "vacation", "б": "sick", "нп": "partial" };
 
 document.addEventListener("DOMContentLoaded", function () {
   document.querySelectorAll(".shift-button").forEach(button => {
@@ -149,6 +169,66 @@ document.addEventListener("DOMContentLoaded", function () {
       document.querySelectorAll(".shift-popover").forEach(p => p.classList.add("hidden"));
     }
   });
+
+  const modeSelect = document.getElementById("input-mode");
+  const pasteHint = document.getElementById("paste-hint");
+
+  function updateMode() {
+    const mode = modeSelect.value;
+    document.querySelectorAll(".shift-button").forEach(el => el.classList.toggle("hidden", mode !== "buttons"));
+    document.querySelectorAll(".shift-select").forEach(el => el.classList.toggle("hidden", mode !== "select"));
+    document.querySelectorAll(".shift-text").forEach(el => el.classList.toggle("hidden", mode !== "text"));
+    document.querySelectorAll(".shift-popover").forEach(p => p.classList.add("hidden"));
+    pasteHint.classList.toggle("hidden", mode !== "text");
+  }
+
+  modeSelect.addEventListener("change", updateMode);
+  updateMode();
+
+  document.querySelectorAll(".shift-select").forEach(sel => {
+    sel.addEventListener("change", () => {
+      const hidden = sel.parentElement.querySelector("input[type='hidden']");
+      hidden.value = sel.value;
+      const btn = sel.parentElement.querySelector(".shift-button");
+      if (btn) btn.textContent = labelMap[sel.value] || "";
+      const text = sel.parentElement.querySelector(".shift-text");
+      if (text) text.value = labelMap[sel.value] || "";
+      if (typeof updateCellColor !== "undefined") updateCellColor(sel);
+    });
+  });
+
+  document.querySelectorAll(".shift-text").forEach(inp => {
+    inp.addEventListener("input", () => {
+      const hidden = inp.parentElement.querySelector("input[type='hidden']");
+      hidden.value = valueMap[inp.value.trim()] || "";
+      const sel = inp.parentElement.querySelector(".shift-select");
+      if (sel) sel.value = hidden.value;
+      const btn = inp.parentElement.querySelector(".shift-button");
+      if (btn) btn.textContent = labelMap[hidden.value] || "";
+    });
+
+    inp.addEventListener("paste", (e) => {
+      const data = (e.clipboardData || window.clipboardData).getData("text");
+      if (!data) return;
+      e.preventDefault();
+      const tokens = data.trim().split(/\s+/);
+      let emp = inp.dataset.emp;
+      let day = parseInt(inp.dataset.day);
+      tokens.forEach(tok => {
+        const val = valueMap[tok.trim()] || "";
+        const hidden = document.querySelector(`input[name='shift_${emp}_${day}']`);
+        const btn = document.querySelector(`button.shift-button[data-emp='${emp}'][data-day='${day}']`);
+        const sel = document.querySelector(`select.shift-select[data-emp='${emp}'][data-day='${day}']`);
+        const txt = document.querySelector(`input.shift-text[data-emp='${emp}'][data-day='${day}']`);
+        if (hidden) hidden.value = val;
+        if (btn) btn.textContent = labelMap[val] || "";
+        if (sel) sel.value = val;
+        if (txt) txt.value = tok.trim();
+        if (sel && typeof updateCellColor !== "undefined") updateCellColor(sel);
+        day++;
+      });
+    });
+  });
 });
 
 function openAutoFillModal() {
@@ -160,7 +240,6 @@ function closeAutoFillModal() {
 function applyAutoFill() {
   const templateId = document.getElementById("schedule-template").value;
   const sequence = templates[templateId] || [];
-  const labelMap = { day: "Д", night: "Н", weekend: "В", vacation: "О", sick: "Б", partial: "Нп" };
 
   document.querySelectorAll("input[name^='shift_']").forEach(input => {
     const parts = input.name.split("_");
@@ -177,6 +256,11 @@ function applyAutoFill() {
     input.value = shift;
     const button = input.parentElement.querySelector(".shift-button");
     if (button) button.textContent = labelMap[shift] || "";
+    const sel = input.parentElement.querySelector(".shift-select");
+    if (sel) sel.value = shift;
+    const txt = input.parentElement.querySelector(".shift-text");
+    if (txt) txt.value = labelMap[shift] || "";
+    if (sel && typeof updateCellColor !== "undefined") updateCellColor(sel);
   });
 
   closeAutoFillModal();
