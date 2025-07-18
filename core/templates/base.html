@@ -54,6 +54,10 @@
            class="px-4 py-2 rounded font-medium text-sm {% if 'report' in current_path %}bianca-active{% else %}bianca-inactive{% endif %}">
           💰 Финальный расчёт
         </a>
+        <a href="{% url 'analytics' %}?month={{ month|date:'Y-m' }}"
+           class="px-4 py-2 rounded font-medium text-sm {% if 'analytics' in current_path %}bianca-active{% else %}bianca-inactive{% endif %}">
+          📊 Аналитика
+        </a>
       {% endwith %}
     </div>
 

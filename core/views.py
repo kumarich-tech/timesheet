@@ -7,6 +7,8 @@ from decimal import Decimal
 
 import openpyxl
 from openpyxl.styles import Font
+import pandas as pd
+import json
 
 from helpers.utils import (
     parse_month,
@@ -501,4 +503,77 @@ def generate_salary_report(request, employees, full_month=True):
 
     filename = f"{'avans' if not full_month else 'zarplata'}_{year}_{month:02d}.xlsx"
     return workbook_to_response(wb, filename)
+
+
+def analytics_view(request):
+    """Сводная аналитика по сменам и услугам по отделам."""
+    first_day = parse_month(request)
+    year, month = first_day.year, first_day.month
+
+    # Данные по сменам
+    qs_shifts = (
+        WorkSchedule.objects
+        .filter(date__year=year, date__month=month)
+        .select_related("employee__department")
+    )
+    df_shifts = pd.DataFrame.from_records(
+        qs_shifts.values("employee__department__name", "shift")
+    )
+    if not df_shifts.empty:
+        pivot_shifts = (
+            df_shifts
+            .groupby(["employee__department__name", "shift"])
+            .size()
+            .unstack(fill_value=0)
+            .reset_index()
+        )
+        shift_chart = (
+            pivot_shifts.set_index("employee__department__name").sum(axis=1).to_dict()
+        )
+        shift_table_html = pivot_shifts.to_html(
+            index=False,
+            classes="w-full border-collapse text-sm text-gray-800",
+            border=0,
+        )
+    else:
+        shift_chart = {}
+        shift_table_html = ""
+
+    # Данные по услугам
+    qs_services = (
+        EmployeeServiceRecord.objects
+        .filter(month=first_day)
+        .select_related("employee__department", "service")
+    )
+    df_services = pd.DataFrame.from_records(
+        qs_services.values("employee__department__name", "service__name", "quantity")
+    )
+    if not df_services.empty:
+        pivot_services = (
+            df_services
+            .groupby(["employee__department__name", "service__name"])["quantity"]
+            .sum()
+            .unstack(fill_value=0)
+            .reset_index()
+        )
+        service_chart = (
+            pivot_services.set_index("employee__department__name").sum(axis=1).to_dict()
+        )
+        service_table_html = pivot_services.to_html(
+            index=False,
+            classes="w-full border-collapse text-sm text-gray-800",
+            border=0,
+        )
+    else:
+        service_chart = {}
+        service_table_html = ""
+
+    context = {
+        "month": first_day,
+        "shift_table": shift_table_html,
+        "service_table": service_table_html,
+        "shift_chart": json.dumps(shift_chart, ensure_ascii=False),
+        "service_chart": json.dumps(service_chart, ensure_ascii=False),
+    }
+    return render(request, "core/analytics.html", context)
 
