@@ -10,12 +10,14 @@ from .views import (
     report_view,
     export_salary_full_xlsx,
     export_salary_advance_xlsx,
+    send_timesheet_email,
 )
 
 urlpatterns = [
     path("timesheet/", timesheet_view, name="timesheet"),
     path("timesheet/import/", import_timesheet_view, name="import_timesheet"),
     path("timesheet/export/", export_timesheet_xlsx, name="export_timesheet"),
+    path("timesheet/send/", send_timesheet_email, name="send_timesheet"),
     path("services/", services_view, name="services"),
     path("services/import/", import_services_view, name="import_services"),
     path("services/export/", export_services_xlsx, name="export_services"),
