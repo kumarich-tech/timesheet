@@ -11,7 +11,8 @@
   <span class="inline-block mr-4"><span class="font-bold text-blue-700">Н</span> — Ночь</span>
   <span class="inline-block mr-4"><span class="font-bold text-gray-500">В</span> — Выходной</span>
   <span class="inline-block mr-4"><span class="font-bold text-yellow-600">О</span> — Отпуск</span>
-  <span class="inline-block"><span class="font-bold text-red-600">Б</span> — Больничный</span>
+  <span class="inline-block mr-4"><span class="font-bold text-red-600">Б</span> — Больничный</span>
+  <span class="inline-block"><span class="font-bold text-purple-700">П</span> — Неполная</span>
 </div>
 
 <!-- Фильтр -->
@@ -160,7 +161,7 @@ function closeAutoFillModal() {
 function applyAutoFill() {
   const templateId = document.getElementById("schedule-template").value;
   const sequence = templates[templateId] || [];
-  const labelMap = { day: "Д", night: "Н", weekend: "В", vacation: "О", sick: "Б", partial: "Нп" };
+  const labelMap = { day: "Д", night: "Н", weekend: "В", vacation: "О", sick: "Б", partial: "П" };
 
   document.querySelectorAll("input[name^='shift_']").forEach(input => {
     const parts = input.name.split("_");
