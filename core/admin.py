@@ -2,7 +2,16 @@ from django.contrib import admin
 from django.urls import path
 from django.shortcuts import render, redirect
 from django.contrib import messages
-from .models import Department, Position, Employee, WorkSchedule, Service, EmployeeServiceRecord, Settings
+from .models import (
+    Department,
+    Position,
+    Employee,
+    WorkSchedule,
+    Service,
+    EmployeeServiceRecord,
+    Settings,
+    ScheduleTemplate,
+)
 import openpyxl
 
 @admin.register(Department)
@@ -72,3 +81,8 @@ class EmployeeAdmin(admin.ModelAdmin):
 @admin.register(Settings)
 class SettingsAdmin(admin.ModelAdmin):
     list_display = ("partial_shift_multiplier", "vacation_multiplier", "sick_multiplier")
+
+
+@admin.register(ScheduleTemplate)
+class ScheduleTemplateAdmin(admin.ModelAdmin):
+    list_display = ("name",)

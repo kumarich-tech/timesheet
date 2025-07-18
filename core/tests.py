@@ -9,6 +9,7 @@ from .models import (
     WorkSchedule,
     Service,
     EmployeeServiceRecord,
+    ScheduleTemplate,
 )
 
 
@@ -39,6 +40,13 @@ class TimesheetViewTests(TestCase):
                 employee=self.employee, date=month_first, shift="day"
             ).exists()
         )
+
+    def test_schedule_templates_in_context(self):
+        ScheduleTemplate.objects.create(name="2/2", sequence=["day", "day", "weekend", "weekend"])
+        url = reverse("timesheet") + "?month=2024-01"
+        resp = self.client.get(url)
+        self.assertEqual(resp.status_code, 200)
+        self.assertIn("schedule_templates", resp.context)
 
 
 class ServicesViewTests(TestCase):

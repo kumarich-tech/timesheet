@@ -29,6 +29,7 @@ from .models import (
     Service,
     EmployeeServiceRecord,
     Department,
+    ScheduleTemplate,
 )
 
 
@@ -87,6 +88,8 @@ def timesheet_view(request):
         }
 
     departments = Department.objects.all()
+    templates = list(ScheduleTemplate.objects.all())
+    templates_json = {t.id: t.sequence for t in templates}
     return render(request, "core/timesheet.html", {
         "employees": employees,
         "days": range(1, days_in_month + 1),
@@ -104,6 +107,8 @@ def timesheet_view(request):
         "departments": departments,
         "selected_department": department_id,
         "last_shifts": last_shift_map,
+        "schedule_templates": templates,
+        "templates_json": templates_json,
     })
 
 

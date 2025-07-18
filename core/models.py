@@ -93,3 +93,15 @@ class Settings(models.Model):
     @classmethod
     def get(cls):
         return cls.objects.first() or cls.objects.create()
+
+
+class ScheduleTemplate(models.Model):
+    name = models.CharField(max_length=100, verbose_name="Название шаблона")
+    sequence = models.JSONField(verbose_name="Последовательность смен")
+
+    class Meta:
+        verbose_name = "Шаблон графика"
+        verbose_name_plural = "Шаблоны графиков"
+
+    def __str__(self):
+        return self.name
