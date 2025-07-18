@@ -1,7 +1,4 @@
 from django.shortcuts import render, redirect
-from django.http import HttpResponse, JsonResponse
-from django.views.decorators.http import require_POST
-import json
 from datetime import date, timedelta
 from calendar import monthrange
 from django.db.models import Q
@@ -24,7 +21,11 @@ from services.payroll import (
     calculate_shift_salary,
     calculate_service_sum,
 )
-from utils.excel_export import workbook_to_response, autofit_columns
+from utils.excel_export import (
+    workbook_to_response,
+    autofit_columns,
+    build_timesheet_workbook,
+)
 
 from .models import (
     Employee,
@@ -147,58 +148,34 @@ def apply_schedule_bulk(request):
 
 def export_timesheet_xlsx(request):
     first_day = parse_month(request)
-    year, month = first_day.year, first_day.month
-    days_in_month = monthrange(year, month)[1]
-
-    employees = get_employees_queryset().order_by("department__name", "full_name")
-    schedule_map, last_shift_map = get_schedule_maps(first_day)
-
-    wb = openpyxl.Workbook()
-    ws = wb.active
-    ws.title = f"Табель_{year}_{month:02d}"
-
-    headers = ["ФИО", "Отдел", "Должность"]
-    headers += [str(d) for d in range(1, days_in_month + 1)]
-    headers += ["Дневных", "Ночных", "Итого (₽)"]
-    ws.append(headers)
-
-    for cell in ws[1]:
-        cell.font = Font(bold=True)
-
-    for employee in employees:
-        row = [
-            employee.full_name,
-            employee.department.name,
-            employee.position.name,
-        ]
-        shifts = schedule_map.get(employee.id, {})
-        day_count = night_count = 0
-
-        for d in range(1, days_in_month + 1):
-            shift = shifts.get(d, "")
-            if shift == "day":
-                row.append("Д")
-                day_count += 1
-            elif shift == "night":
-                row.append("Н")
-                night_count += 1
-            elif shift == "vacation":
-                row.append("О")
-            elif shift == "sick":
-                row.append("Б")
-            elif shift == "weekend":
-                row.append("В")
-            else:
-                row.append("")
-
-        total_salary = calculate_shift_salary(employee, day_count, night_count)
-        row += [day_count, night_count, round(float(total_salary), 2)]
-
-        ws.append(row)
-
-    autofit_columns(ws)
-    filename = f"tabel_{year}_{month:02d}.xlsx"
+    wb = build_timesheet_workbook(first_day)
+    filename = f"tabel_{first_day.year}_{first_day.month:02d}.xlsx"
     return workbook_to_response(wb, filename)
+
+
+def send_timesheet_email(request):
+    """Send timesheet Excel report to configured recipients."""
+    first_day = parse_month(request)
+    wb = build_timesheet_workbook(first_day)
+
+    buffer = BytesIO()
+    wb.save(buffer)
+    buffer.seek(0)
+
+    subject = f"Табель за {first_day.strftime('%B %Y')}"
+    email = EmailMessage(
+        subject=subject,
+        body="Во вложении табель." ,
+        from_email=settings.DEFAULT_FROM_EMAIL,
+        to=settings.REPORT_RECIPIENTS,
+    )
+    filename = f"tabel_{first_day.year}_{first_day.month:02d}.xlsx"
+    email.attach(filename, buffer.getvalue(),
+                 "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+    email.send(fail_silently=False)
+
+    messages.success(request, "Табель отправлен по электронной почте")
+    return redirect(f"{reverse('report')}?month={first_day.strftime('%Y-%m')}")
 
 
 def import_timesheet_view(request):
