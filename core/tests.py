@@ -153,7 +153,8 @@ class ExcelExportTests(TestCase):
         self.assertEqual(resp.status_code, 200)
         wb = self._load_workbook(resp)
         ws = wb.active
-        self.assertEqual(ws.max_row, Employee.objects.count() + 1)
+        dept_count = Department.objects.count()
+        self.assertEqual(ws.max_row, Employee.objects.count() + dept_count + 1)
         self.assertEqual(ws.max_column, 8)
 
 
