@@ -41,6 +41,7 @@
   </label>
   <button type="submit" class="px-4 py-2 rounded text-white bg-[var(--bianca-orange)] hover:bg-orange-600 font-semibold">Показать</button>
   <button type="button" onclick="openAutoFillModal()" class="px-4 py-2 rounded text-white bg-gray-700 hover:bg-gray-800 font-semibold">⚙ Автозаполнить</button>
+  <button type="button" onclick="openBulkModal()" class="px-4 py-2 rounded text-white bg-gray-700 hover:bg-gray-800 font-semibold">🗓 Массовое заполнение</button>
 </form>
 
 <!-- Табель -->
@@ -89,8 +90,37 @@
                   {% for key, label in shift_choices %}
                     <div class="cursor-pointer px-2 py-1 hover:bg-gray-100" data-value="{{ key }}" data-label="{{ label }}">{{ label }}</div>
                   {% endfor %}
-                </div>
-              </div>
+</div>
+</div>
+
+<!-- Bulk modal -->
+<div id="bulk-modal" class="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50 hidden">
+  <div class="bg-white p-6 rounded shadow-lg w-[320px]">
+    <h2 class="text-lg font-bold mb-4">Массовое заполнение</h2>
+    <label class="block mb-2 text-sm">Отдел:
+      <select id="bulk-department" class="w-full border px-2 py-1">
+        {% for dept in departments %}
+          <option value="{{ dept.id }}">{{ dept.name }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <label class="block mb-2 text-sm">Смена:
+      <select id="bulk-shift" class="w-full border px-2 py-1">
+        {% for key, label in shift_choices %}
+          <option value="{{ key }}">{{ label }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <label class="block mb-4 text-sm">Период:
+      <input type="number" id="bulk-start" min="1" max="{{ days|length }}" value="1" class="border w-20 px-1 py-1"> -
+      <input type="number" id="bulk-end" min="1" max="{{ days|length }}" value="{{ days|length }}" class="border w-20 px-1 py-1">
+    </label>
+    <div class="flex justify-end space-x-2">
+      <button onclick="closeBulkModal()" class="text-gray-600">Отмена</button>
+      <button onclick="applyBulk()" class="text-white bg-[var(--bianca-orange)] px-3 py-1 rounded hover:bg-orange-600">Применить</button>
+    </div>
+  </div>
+</div>
             </td>
           {% endfor %}
           <td class="border px-1 py-1 text-center bg-green-100 font-semibold">{{ salary|get_item:employee.id|get_item:"day" }}</td>
@@ -276,6 +306,46 @@ function applyAutoFill() {
   });
 
   closeAutoFillModal();
+}
+
+function openBulkModal() {
+  document.getElementById("bulk-modal").classList.remove("hidden");
+}
+function closeBulkModal() {
+  document.getElementById("bulk-modal").classList.add("hidden");
+}
+function getCsrfToken() {
+  const match = document.cookie.match(/csrftoken=([^;]+)/);
+  return match ? match[1] : "";
+}
+function applyBulk() {
+  const dept = document.getElementById("bulk-department").value;
+  const shift = document.getElementById("bulk-shift").value;
+  const start = document.getElementById("bulk-start").value;
+  const end = document.getElementById("bulk-end").value;
+  const month = document.querySelector("input[name='month']").value;
+
+  fetch("{% url 'apply_schedule_bulk' %}", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "X-CSRFToken": getCsrfToken(),
+    },
+    body: JSON.stringify({
+      department_id: dept,
+      shift: shift,
+      start_day: start,
+      end_day: end,
+      month: month,
+    }),
+  }).then(r => r.json()).then(data => {
+    if (data.status === "ok") {
+      location.reload();
+    } else {
+      alert(data.message || "Ошибка");
+    }
+  });
+  closeBulkModal();
 }
 </script>
 {% endblock %}

@@ -1,5 +1,7 @@
 from django.shortcuts import render, redirect
-from django.http import HttpResponse
+from django.http import HttpResponse, JsonResponse
+from django.views.decorators.http import require_POST
+import json
 from datetime import date, timedelta
 from calendar import monthrange
 from django.db.models import Q
@@ -111,6 +113,34 @@ def timesheet_view(request):
         "schedule_templates": templates,
         "templates_json": templates_json,
     })
+
+
+@require_POST
+def apply_schedule_bulk(request):
+    """Apply the same shift to all employees in a department for a date range."""
+    try:
+        data = json.loads(request.body.decode())
+        month_str = data.get("month")
+        department_id = data.get("department_id")
+        shift = data.get("shift")
+        start_day = int(data.get("start_day"))
+        end_day = int(data.get("end_day"))
+
+        if not all([month_str, department_id, shift]):
+            return JsonResponse({"status": "error", "message": "Invalid data"}, status=400)
+
+        year, month = [int(p) for p in month_str.split("-")]
+        employees = Employee.objects.filter(department_id=department_id)
+        for emp in employees:
+            for d in range(start_day, end_day + 1):
+                WorkSchedule.objects.update_or_create(
+                    employee=emp,
+                    date=date(year, month, d),
+                    defaults={"shift": shift},
+                )
+        return JsonResponse({"status": "ok"})
+    except Exception as exc:
+        return JsonResponse({"status": "error", "message": str(exc)}, status=400)
 
 
 def export_timesheet_xlsx(request):
