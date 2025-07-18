@@ -52,7 +52,7 @@ def timesheet_view(request):
         })
 
     department_id = request.GET.get("department")
-    employees = get_employees_queryset()
+    employees = get_employees_queryset().order_by("department__name", "full_name")
     if department_id:
         employees = employees.filter(department_id=department_id)
 
@@ -117,7 +117,7 @@ def export_timesheet_xlsx(request):
     year, month = first_day.year, first_day.month
     days_in_month = monthrange(year, month)[1]
 
-    employees = get_employees_queryset()
+    employees = get_employees_queryset().order_by("department__name", "full_name")
     schedule_map, last_shift_map = get_schedule_maps(first_day)
 
     wb = openpyxl.Workbook()
@@ -273,7 +273,22 @@ def export_salary_report_xlsx(request):
     for cell in ws[1]:
         cell.font = Font(bold=True)
 
+    current_dept = None
+    dept_day = dept_night = dept_shift_sum = dept_service_sum = dept_total = 0
     for emp in employees:
+        if current_dept and emp.department_id != current_dept.id:
+            ws.append([
+                "",
+                f"Итого по отделу {current_dept.name}",
+                "",
+                dept_day,
+                dept_night,
+                round(dept_shift_sum, 2),
+                round(dept_service_sum, 2),
+                round(dept_total, 2),
+            ])
+            dept_day = dept_night = dept_shift_sum = dept_service_sum = dept_total = 0
+
         shifts = schedule_map.get(emp.id, {})
         day_count, night_count = count_shifts(shifts)
         salary_shifts = calculate_shift_salary(emp, day_count, night_count)
@@ -291,7 +306,26 @@ def export_salary_report_xlsx(request):
             night_count,
             round(float(salary_shifts), 2),
             round(float(service_sum), 2),
-            total
+            total,
+        ])
+
+        dept_day += day_count
+        dept_night += night_count
+        dept_shift_sum += float(salary_shifts)
+        dept_service_sum += float(service_sum)
+        dept_total += total
+        current_dept = emp.department
+
+    if current_dept:
+        ws.append([
+            "",
+            f"Итого по отделу {current_dept.name}",
+            "",
+            dept_day,
+            dept_night,
+            round(dept_shift_sum, 2),
+            round(dept_service_sum, 2),
+            round(dept_total, 2),
         ])
 
     autofit_columns(ws)
@@ -306,7 +340,7 @@ def report_view(request):
 
     year, month = first_day.year, first_day.month
     days_in_month = monthrange(year, month)[1]
-    employees = get_employees_queryset()
+    employees = get_employees_queryset().order_by("department__name", "full_name")
     if selected_department:
         employees = employees.filter(department_id=selected_department)
 
@@ -317,6 +351,7 @@ def report_view(request):
     service_data = build_service_data(records)
 
     salary_summary = []
+    department_totals: dict[int, dict[str, float]] = {}
     working_days_total = get_working_days(year, month)
     mid_month = 15
 
@@ -334,28 +369,50 @@ def report_view(request):
             total_salary = salary_base + float(emp.bonus) + float(service_sum)
 
             if report_type == "advance":
-                worked_days_1_15 = sum(1 for d, s in shifts.items() if s in ["day", "night"] and d <= mid_month)
-                advance = (float(emp.fixed_salary) / working_days_total) * worked_days_1_15 if working_days_total else 0
-                salary_summary.append({
+                worked_days_1_15 = sum(
+                    1 for d, s in shifts.items() if s in ["day", "night"] and d <= mid_month
+                )
+                advance = (
+                    (float(emp.fixed_salary) / working_days_total) * worked_days_1_15
+                    if working_days_total
+                    else 0
+                )
+                row = {
                     "employee": emp,
                     "day": worked_days_1_15,
                     "night": 0,
                     "shifts_sum": round(advance),
                     "services_sum": 0,
                     "total": round(advance),
-                })
+                }
+                salary_summary.append(row)
+                totals = department_totals.setdefault(
+                    emp.department_id,
+                    {"day": 0, "night": 0, "total": 0},
+                )
+                totals["day"] += row["day"]
+                totals["night"] += row["night"]
+                totals["total"] += row["total"]
                 continue
         else:
             total_salary = float(total_shift_salary + service_sum)
 
-        salary_summary.append({
+        row = {
             "employee": emp,
             "day": day_count,
             "night": night_count,
             "shifts_sum": round(float(total_shift_salary)),
             "services_sum": round(float(service_sum)),
             "total": round(total_salary),
-        })
+        }
+        salary_summary.append(row)
+        totals = department_totals.setdefault(
+            emp.department_id,
+            {"day": 0, "night": 0, "total": 0},
+        )
+        totals["day"] += row["day"]
+        totals["night"] += row["night"]
+        totals["total"] += row["total"]
 
     return render(request, "core/report.html", {
         "month": first_day,
@@ -363,6 +420,7 @@ def report_view(request):
         "selected_department": selected_department,
         "report_type": report_type,
         "salary_summary": salary_summary,
+        "department_totals": department_totals,
     })
 
 def export_salary_full_xlsx(request):
