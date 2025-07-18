@@ -19,6 +19,11 @@ from .models import (
 )
 
 
+def get_employees_queryset():
+    """Return all employees with related department and position."""
+    return Employee.objects.select_related("department", "position").all()
+
+
 def parse_month(request):
     month_str = request.GET.get("month")
     if month_str:
@@ -50,7 +55,7 @@ def timesheet_view(request):
         })
 
     department_id = request.GET.get("department")
-    employees = Employee.objects.all()
+    employees = get_employees_queryset()
     if department_id:
         employees = employees.filter(department_id=department_id)
 
@@ -124,7 +129,7 @@ def export_timesheet_xlsx(request):
     year, month = first_day.year, first_day.month
     days_in_month = monthrange(year, month)[1]
 
-    employees = Employee.objects.all()
+    employees = get_employees_queryset()
     schedule = WorkSchedule.objects.filter(date__year=year, date__month=month)
 
     schedule_map = {}
@@ -195,7 +200,7 @@ def export_timesheet_xlsx(request):
 def services_view(request):
     first_day = parse_month(request)
     year, month = first_day.year, first_day.month
-    employees = Employee.objects.all()
+    employees = get_employees_queryset()
     services = Service.objects.all()
     selected_department = request.GET.get("department")
 
@@ -248,7 +253,7 @@ def export_services_xlsx(request):
     first_day = parse_month(request)
     year, month = first_day.year, first_day.month
 
-    employees = Employee.objects.all()
+    employees = get_employees_queryset()
     services = Service.objects.all()
     records = EmployeeServiceRecord.objects.filter(month=first_day)
 
@@ -294,7 +299,7 @@ def export_salary_report_xlsx(request):
     year, month = first_day.year, first_day.month
     days_in_month = monthrange(year, month)[1]
 
-    employees = Employee.objects.all()
+    employees = get_employees_queryset()
     schedule = WorkSchedule.objects.filter(date__year=year, date__month=month)
     records = EmployeeServiceRecord.objects.filter(month=first_day)
     services = Service.objects.all()
@@ -369,7 +374,7 @@ def report_view(request):
 
     year, month = first_day.year, first_day.month
     days_in_month = monthrange(year, month)[1]
-    employees = Employee.objects.all()
+    employees = get_employees_queryset()
     if selected_department:
         employees = employees.filter(department_id=selected_department)
 
@@ -445,12 +450,14 @@ def get_working_days(year, month):
     return sum(1 for d in range(1, total_days + 1) if date(year, month, d).weekday() < 5)
 
 def export_salary_full_xlsx(request):
-    return generate_salary_report(request, full_month=True)
+    employees = get_employees_queryset()
+    return generate_salary_report(request, employees, full_month=True)
 
 def export_salary_advance_xlsx(request):
-    return generate_salary_report(request, full_month=False)
+    employees = get_employees_queryset()
+    return generate_salary_report(request, employees, full_month=False)
 
-def generate_salary_report(request, full_month=True):
+def generate_salary_report(request, employees, full_month=True):
     from calendar import monthrange
     from openpyxl import Workbook
     from openpyxl.styles import Font
@@ -459,7 +466,6 @@ def generate_salary_report(request, full_month=True):
     year, month = first_day.year, first_day.month
     days_in_month = monthrange(year, month)[1]
 
-    employees = Employee.objects.all()
     selected_department = request.GET.get("department")
     if selected_department:
         employees = employees.filter(department_id=selected_department)
