@@ -1,5 +1,7 @@
 from django.shortcuts import render, redirect
-from django.http import HttpResponse
+from django.http import HttpResponse, JsonResponse
+from django.views.decorators.http import require_POST
+import json
 from datetime import date, timedelta
 from calendar import monthrange
 from django.db.models import Q
@@ -7,6 +9,8 @@ from decimal import Decimal
 
 import openpyxl
 from openpyxl.styles import Font
+import pandas as pd
+import json
 
 from helpers.utils import (
     parse_month,
@@ -113,6 +117,34 @@ def timesheet_view(request):
     })
 
 
+@require_POST
+def apply_schedule_bulk(request):
+    """Apply the same shift to all employees in a department for a date range."""
+    try:
+        data = json.loads(request.body.decode())
+        month_str = data.get("month")
+        department_id = data.get("department_id")
+        shift = data.get("shift")
+        start_day = int(data.get("start_day"))
+        end_day = int(data.get("end_day"))
+
+        if not all([month_str, department_id, shift]):
+            return JsonResponse({"status": "error", "message": "Invalid data"}, status=400)
+
+        year, month = [int(p) for p in month_str.split("-")]
+        employees = Employee.objects.filter(department_id=department_id)
+        for emp in employees:
+            for d in range(start_day, end_day + 1):
+                WorkSchedule.objects.update_or_create(
+                    employee=emp,
+                    date=date(year, month, d),
+                    defaults={"shift": shift},
+                )
+        return JsonResponse({"status": "ok"})
+    except Exception as exc:
+        return JsonResponse({"status": "error", "message": str(exc)}, status=400)
+
+
 def export_timesheet_xlsx(request):
     first_day = parse_month(request)
     year, month = first_day.year, first_day.month
@@ -167,6 +199,62 @@ def export_timesheet_xlsx(request):
     autofit_columns(ws)
     filename = f"tabel_{year}_{month:02d}.xlsx"
     return workbook_to_response(wb, filename)
+
+
+def import_timesheet_view(request):
+    """Import work schedules from uploaded Excel file."""
+    first_day = parse_month(request)
+    year, month = first_day.year, first_day.month
+    days_in_month = monthrange(year, month)[1]
+
+    if request.method == "POST" and request.FILES.get("xlsx_file"):
+        wb = openpyxl.load_workbook(request.FILES["xlsx_file"])
+        ws = wb.active
+
+        shift_map = {
+            "Д": "day",
+            "д": "day",
+            "Н": "night",
+            "н": "night",
+            "В": "weekend",
+            "в": "weekend",
+            "О": "vacation",
+            "о": "vacation",
+            "Б": "sick",
+            "б": "sick",
+            "П": "partial",
+            "п": "partial",
+            "Нп": "partial",
+            "нп": "partial",
+            "НП": "partial",
+        }
+
+        for row in ws.iter_rows(min_row=2):
+            full_name = str(row[0].value).strip() if row[0].value else None
+            if not full_name:
+                continue
+            try:
+                employee = Employee.objects.get(full_name=full_name)
+            except Employee.DoesNotExist:
+                continue
+
+            for day in range(1, min(days_in_month, len(row) - 1) + 1):
+                raw = row[day].value
+                if raw is None:
+                    continue
+                shift = shift_map.get(str(raw).strip())
+                if not shift:
+                    continue
+                date_obj = date(year, month, day)
+                WorkSchedule.objects.update_or_create(
+                    employee=employee,
+                    date=date_obj,
+                    defaults={"shift": shift},
+                )
+
+        return redirect(f"{request.path}?month={first_day.strftime('%Y-%m')}")
+
+    return render(request, "core/import_timesheet.html", {"month": first_day})
 
 def services_view(request):
     first_day = parse_month(request)
@@ -247,6 +335,46 @@ def export_services_xlsx(request):
     autofit_columns(ws)
     filename = f"uslugi_{year}_{month:02d}.xlsx"
     return workbook_to_response(wb, filename)
+
+
+def import_services_view(request):
+    """Import employee service records from an Excel file."""
+    if request.method == "POST" and request.FILES.get("xlsx_file"):
+        wb = openpyxl.load_workbook(request.FILES["xlsx_file"])
+        ws = wb.active
+        headers = [cell.value for cell in ws[1]]
+        service_names = headers[2:]
+        service_map = {
+            s.name: s for s in Service.objects.filter(name__in=service_names)
+        }
+        for row in ws.iter_rows(min_row=2, values_only=True):
+            full_name = row[0]
+            month_val = row[1]
+            if not full_name or not month_val:
+                continue
+            try:
+                year, month = map(int, str(month_val).split("-")[:2])
+                month_date = date(year, month, 1)
+            except Exception:
+                continue
+            try:
+                employee = Employee.objects.get(full_name=full_name)
+            except Employee.DoesNotExist:
+                continue
+            for idx, service_name in enumerate(service_names, start=2):
+                qty = row[idx]
+                if qty:
+                    service = service_map.get(service_name)
+                    if not service:
+                        continue
+                    EmployeeServiceRecord.objects.update_or_create(
+                        employee=employee,
+                        service=service,
+                        month=month_date,
+                        defaults={"quantity": int(qty)},
+                    )
+        return redirect("services")
+    return render(request, "core/import_services.html")
 
 
 def export_salary_report_xlsx(request):
@@ -501,4 +629,77 @@ def generate_salary_report(request, employees, full_month=True):
 
     filename = f"{'avans' if not full_month else 'zarplata'}_{year}_{month:02d}.xlsx"
     return workbook_to_response(wb, filename)
+
+
+def analytics_view(request):
+    """Сводная аналитика по сменам и услугам по отделам."""
+    first_day = parse_month(request)
+    year, month = first_day.year, first_day.month
+
+    # Данные по сменам
+    qs_shifts = (
+        WorkSchedule.objects
+        .filter(date__year=year, date__month=month)
+        .select_related("employee__department")
+    )
+    df_shifts = pd.DataFrame.from_records(
+        qs_shifts.values("employee__department__name", "shift")
+    )
+    if not df_shifts.empty:
+        pivot_shifts = (
+            df_shifts
+            .groupby(["employee__department__name", "shift"])
+            .size()
+            .unstack(fill_value=0)
+            .reset_index()
+        )
+        shift_chart = (
+            pivot_shifts.set_index("employee__department__name").sum(axis=1).to_dict()
+        )
+        shift_table_html = pivot_shifts.to_html(
+            index=False,
+            classes="w-full border-collapse text-sm text-gray-800",
+            border=0,
+        )
+    else:
+        shift_chart = {}
+        shift_table_html = ""
+
+    # Данные по услугам
+    qs_services = (
+        EmployeeServiceRecord.objects
+        .filter(month=first_day)
+        .select_related("employee__department", "service")
+    )
+    df_services = pd.DataFrame.from_records(
+        qs_services.values("employee__department__name", "service__name", "quantity")
+    )
+    if not df_services.empty:
+        pivot_services = (
+            df_services
+            .groupby(["employee__department__name", "service__name"])["quantity"]
+            .sum()
+            .unstack(fill_value=0)
+            .reset_index()
+        )
+        service_chart = (
+            pivot_services.set_index("employee__department__name").sum(axis=1).to_dict()
+        )
+        service_table_html = pivot_services.to_html(
+            index=False,
+            classes="w-full border-collapse text-sm text-gray-800",
+            border=0,
+        )
+    else:
+        service_chart = {}
+        service_table_html = ""
+
+    context = {
+        "month": first_day,
+        "shift_table": shift_table_html,
+        "service_table": service_table_html,
+        "shift_chart": json.dumps(shift_chart, ensure_ascii=False),
+        "service_chart": json.dumps(service_chart, ensure_ascii=False),
+    }
+    return render(request, "core/analytics.html", context)
 

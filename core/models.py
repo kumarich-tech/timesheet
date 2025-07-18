@@ -1,4 +1,5 @@
 from django.db import models
+from simple_history.models import HistoricalRecords
 
 # Create your models here.
 class Department(models.Model):
@@ -47,6 +48,7 @@ class WorkSchedule(models.Model):
     employee = models.ForeignKey(Employee, on_delete=models.CASCADE)
     date = models.DateField()
     shift = models.CharField(max_length=10, choices=ShiftType.choices)
+    history = HistoricalRecords()
 
     class Meta:
         unique_together = ('employee', 'date')

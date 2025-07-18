@@ -1,0 +1,11 @@
+{% extends "base.html" %}
+{% block title %}Импорт табеля{% endblock %}
+{% block content %}
+<h1 class="text-2xl font-bold mb-4">Импорт табеля за {{ month|date:"F Y" }}</h1>
+<form method="post" enctype="multipart/form-data" class="space-y-4">
+  {% csrf_token %}
+  <input type="file" name="xlsx_file" accept=".xlsx" required class="border px-2 py-1 rounded" />
+  <button type="submit" class="px-4 py-2 bg-orange-600 text-white rounded hover:bg-orange-700">Загрузить</button>
+</form>
+<p class="mt-4 text-sm text-gray-700">Формат: первая колонка ФИО, далее колонки <code>01</code>, <code>02</code> ... с кодами смен (Д, Н, В, О, Б, П).</p>
+{% endblock %}
