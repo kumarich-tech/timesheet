@@ -29,6 +29,11 @@ class Employee(models.Model):
     def __str__(self):
         return self.full_name
 
+    class Meta:
+        permissions = [
+            ("import_employees", "Can import employees from Excel"),
+        ]
+
 
 class ShiftType(models.TextChoices):
     DAY = "day", "День"
@@ -47,6 +52,10 @@ class WorkSchedule(models.Model):
 
     class Meta:
         unique_together = ('employee', 'date')
+        permissions = [
+            ("export_timesheet", "Can export timesheet"),
+            ("export_salary", "Can export salary reports"),
+        ]
 
     def __str__(self):
         return f"{self.employee} - {self.date} ({self.get_shift_display()})"
@@ -69,6 +78,9 @@ class EmployeeServiceRecord(models.Model):
 
     class Meta:
         unique_together = ('employee', 'service', 'month')
+        permissions = [
+            ("export_services", "Can export services"),
+        ]
 
     def __str__(self):
         return f"{self.employee} - {self.service} ({self.month})"

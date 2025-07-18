@@ -77,17 +77,16 @@
   </div>
 
   <div class="mt-6 flex items-center gap-4">
+    {% if perms.core.change_employeeservicerecord %}
     <button type="submit"
             class="px-4 py-2 bg-orange-600 text-white rounded hover:bg-orange-700 font-semibold shadow">
       💾 Сохранить услуги
     </button>
+    {% endif %}
+    {% if perms.core.export_services %}
     <a href="{% url 'export_services' %}?month={{ month|date:'Y-m' }}{% if selected_department %}&department={{ selected_department }}{% endif %}"
        class="px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700 font-semibold shadow">
       📥 Выгрузить Excel
-    </a>
-    <a href="{% url 'import_services' %}"
-       class="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 font-semibold shadow">
-      📤 Импорт из Excel
     </a>
   </div>
 </form>

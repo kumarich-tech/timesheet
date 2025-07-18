@@ -144,11 +144,12 @@
 
   <!-- Кнопки -->
   <div class="mt-4 flex items-center">
+    {% if perms.core.change_workschedule %}
     <button type="submit" class="px-4 py-2 bg-[var(--bianca-orange)] text-white rounded hover:bg-orange-600">💾 Сохранить табель</button>
+    {% endif %}
+    {% if perms.core.export_timesheet %}
     <a href="{% url 'export_timesheet' %}?month={{ month|date:'Y-m' }}{% if selected_department %}&department={{ selected_department }}{% endif %}"
        class="ml-4 px-4 py-2 bg-black text-white rounded hover:bg-gray-800">📥 Выгрузить в Excel</a>
-    <a href="{% url 'import_timesheet' %}?month={{ month|date:'Y-m' }}"
-       class="ml-4 px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700">⬆ Импорт из Excel</a>
   </div>
 </form>
 
