@@ -61,27 +61,7 @@
     {% endblock %}
   </div>
 
-  <!-- Подкраска ячеек -->
-  <script>
-    function updateCellColor(select) {
-      const cell = select.parentElement;
-      const value = select.value;
-      const colors = {
-        day: '#d1fae5',
-        night: '#bfdbfe',
-        vacation: '#fef9c3',
-        weekend: '#e5e7eb',
-        sick: '#fecaca',
-      };
-      cell.style.backgroundColor = colors[value] || 'transparent';
-    }
-
-    document.addEventListener("DOMContentLoaded", function () {
-      document.querySelectorAll("select[name^='shift_']").forEach(select => {
-        updateCellColor(select);
-        select.addEventListener("change", () => updateCellColor(select));
-      });
-    });
-  </script>
+  <!-- Скрипты страниц -->
+  {% block extra_js %}{% endblock %}
 </body>
 </html>
