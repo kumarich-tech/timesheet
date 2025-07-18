@@ -1,0 +1,12 @@
+{% extends "base.html" %}
+{% block title %}Импорт услуг{% endblock %}
+
+{% block content %}
+<h1 class="text-2xl font-bold text-gray-900 mb-4">Импорт услуг из Excel</h1>
+<form method="post" enctype="multipart/form-data" class="mb-4 flex items-center gap-4">
+  {% csrf_token %}
+  <input type="file" name="xlsx_file" accept=".xlsx" required class="border rounded px-2 py-1 text-sm">
+  <button type="submit" class="px-4 py-1 bg-orange-600 text-white rounded hover:bg-orange-700 text-sm font-semibold shadow">Загрузить</button>
+</form>
+<p class="text-sm text-gray-600">Формат: ФИО, месяц (YYYY-MM), далее количество по каждой услуге.</p>
+{% endblock %}

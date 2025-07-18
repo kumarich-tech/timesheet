@@ -249,6 +249,46 @@ def export_services_xlsx(request):
     return workbook_to_response(wb, filename)
 
 
+def import_services_view(request):
+    """Import employee service records from an Excel file."""
+    if request.method == "POST" and request.FILES.get("xlsx_file"):
+        wb = openpyxl.load_workbook(request.FILES["xlsx_file"])
+        ws = wb.active
+        headers = [cell.value for cell in ws[1]]
+        service_names = headers[2:]
+        service_map = {
+            s.name: s for s in Service.objects.filter(name__in=service_names)
+        }
+        for row in ws.iter_rows(min_row=2, values_only=True):
+            full_name = row[0]
+            month_val = row[1]
+            if not full_name or not month_val:
+                continue
+            try:
+                year, month = map(int, str(month_val).split("-")[:2])
+                month_date = date(year, month, 1)
+            except Exception:
+                continue
+            try:
+                employee = Employee.objects.get(full_name=full_name)
+            except Employee.DoesNotExist:
+                continue
+            for idx, service_name in enumerate(service_names, start=2):
+                qty = row[idx]
+                if qty:
+                    service = service_map.get(service_name)
+                    if not service:
+                        continue
+                    EmployeeServiceRecord.objects.update_or_create(
+                        employee=employee,
+                        service=service,
+                        month=month_date,
+                        defaults={"quantity": int(qty)},
+                    )
+        return redirect("services")
+    return render(request, "core/import_services.html")
+
+
 def export_salary_report_xlsx(request):
     first_day = parse_month(request)
     year, month = first_day.year, first_day.month
