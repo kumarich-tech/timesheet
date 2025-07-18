@@ -45,11 +45,19 @@ class EmployeeAdmin(admin.ModelAdmin):
     def get_urls(self):
         urls = super().get_urls()
         custom_urls = [
-            path("import-employees/", self.admin_site.admin_view(self.import_employees), name="import_employees"),
+            path(
+                "import-employees/",
+                self.admin_site.admin_view(self.import_employees),
+                name="import_employees",
+            ),
         ]
         return custom_urls + urls
 
     def import_employees(self, request):
+        if not request.user.has_perm("core.import_employees"):
+            messages.error(request, "Недостаточно прав для импорта.")
+            return redirect("..")
+
         if request.method == "POST" and request.FILES.get("xlsx_file"):
             wb = openpyxl.load_workbook(request.FILES["xlsx_file"])
             ws = wb.active
