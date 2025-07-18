@@ -4,7 +4,9 @@ register = template.Library()
 
 @register.filter
 def get_item(dictionary, key):
-    return dictionary.get(key)
+    if isinstance(dictionary, dict):
+        return dictionary.get(key)
+    return None
 @register.filter
 def filter_for(services, is_fixed_salary):
     return services.filter(for_salary_based=is_fixed_salary)
