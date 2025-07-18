@@ -1,13 +1,26 @@
 from django.shortcuts import render, redirect
 from django.http import HttpResponse
-from datetime import date, datetime, timedelta
+from datetime import date, timedelta
 from calendar import monthrange
-from io import BytesIO
 from django.db.models import Q
 from decimal import Decimal
 
 import openpyxl
 from openpyxl.styles import Font
+
+from helpers.utils import (
+    parse_month,
+    get_employees_queryset,
+    get_schedule_maps,
+    build_service_data,
+    get_working_days,
+)
+from services.payroll import (
+    count_shifts,
+    calculate_shift_salary,
+    calculate_service_sum,
+)
+from utils.excel_export import workbook_to_response, autofit_columns
 
 from .models import (
     Employee,
@@ -17,23 +30,6 @@ from .models import (
     EmployeeServiceRecord,
     Department,
 )
-
-
-def get_employees_queryset():
-    """Return all employees with related department and position."""
-    return Employee.objects.select_related("department", "position").all()
-
-
-def parse_month(request):
-    month_str = request.GET.get("month")
-    if month_str:
-        try:
-            year, month = map(int, month_str.split("-"))
-            return date(year, month, 1)
-        except:
-            pass
-    today = date.today()
-    return date(today.year, today.month, 1)
 
 
 def timesheet_view(request):
@@ -76,31 +72,18 @@ def timesheet_view(request):
             redirect_url += f"&department={department_id}"
         return redirect(redirect_url)
 
-    schedule = WorkSchedule.objects.filter(date__year=year, date__month=month)
-    schedule_map = {}
-
-    # Получаем смены на последний день предыдущего месяца
-    prev_month_last_date = first_day.replace(day=1) - timedelta(days=1)
-    prev_schedules = WorkSchedule.objects.filter(date=prev_month_last_date)
-    last_shift_map = {s.employee_id: s.shift for s in prev_schedules}
-    for s in schedule:
-        schedule_map.setdefault(s.employee_id, {})[s.date.day] = s.shift
+    schedule_map, last_shift_map = get_schedule_maps(first_day)
 
     salary_summary = {}
     for employee in employees:
         shifts = schedule_map.get(employee.id, {})
-        day_count = sum(1 for shift in shifts.values() if shift == 'day')
-        night_count = sum(1 for shift in shifts.values() if shift == 'night')
-
-        if employee.is_fixed_salary:
-            total_salary = float(employee.fixed_salary) + float(employee.bonus)
-        else:
-            total_salary = day_count * float(employee.day_shift_rate) + night_count * float(employee.night_shift_rate)
+        day_count, night_count = count_shifts(shifts)
+        total_salary = calculate_shift_salary(employee, day_count, night_count)
 
         salary_summary[employee.id] = {
             "day": day_count,
             "night": night_count,
-            "total": total_salary,
+            "total": float(total_salary),
         }
 
     departments = Department.objects.all()
@@ -130,16 +113,7 @@ def export_timesheet_xlsx(request):
     days_in_month = monthrange(year, month)[1]
 
     employees = get_employees_queryset()
-    schedule = WorkSchedule.objects.filter(date__year=year, date__month=month)
-
-    schedule_map = {}
-
-    # Получаем смены на последний день предыдущего месяца
-    prev_month_last_date = first_day.replace(day=1) - timedelta(days=1)
-    prev_schedules = WorkSchedule.objects.filter(date=prev_month_last_date)
-    last_shift_map = {s.employee_id: s.shift for s in prev_schedules}
-    for s in schedule:
-        schedule_map.setdefault(s.employee_id, {})[s.date.day] = s.shift
+    schedule_map, last_shift_map = get_schedule_maps(first_day)
 
     wb = openpyxl.Workbook()
     ws = wb.active
@@ -160,8 +134,7 @@ def export_timesheet_xlsx(request):
             employee.position.name,
         ]
         shifts = schedule_map.get(employee.id, {})
-        day_count = 0
-        night_count = 0
+        day_count = night_count = 0
 
         for d in range(1, days_in_month + 1):
             shift = shifts.get(d, "")
@@ -180,22 +153,14 @@ def export_timesheet_xlsx(request):
             else:
                 row.append("")
 
-        total_salary = day_count * float(employee.day_shift_rate) + night_count * float(employee.night_shift_rate)
-        row += [day_count, night_count, round(total_salary, 2)]
+        total_salary = calculate_shift_salary(employee, day_count, night_count)
+        row += [day_count, night_count, round(float(total_salary), 2)]
 
         ws.append(row)
 
-    for col in ws.columns:
-        max_len = max((len(str(cell.value)) for cell in col), default=0)
-        ws.column_dimensions[col[0].column_letter].width = max_len + 2
-
-    buffer = BytesIO()
-    wb.save(buffer)
-    buffer.seek(0)
-
-    response = HttpResponse(buffer, content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
-    response['Content-Disposition'] = f'attachment; filename="tabel_{year}_{month:02d}.xlsx"'
-    return response
+    autofit_columns(ws)
+    filename = f"tabel_{year}_{month:02d}.xlsx"
+    return workbook_to_response(wb, filename)
 
 def services_view(request):
     first_day = parse_month(request)
@@ -225,18 +190,13 @@ def services_view(request):
         return redirect(f"{request.path}?month={first_day.strftime('%Y-%m')}&department={selected_department or ''}")
 
     records = EmployeeServiceRecord.objects.filter(month=first_day)
-    data = {}
-    for rec in records:
-        data[(rec.employee.id, rec.service.id)] = rec.quantity
+    data = build_service_data(records)
 
     summary = {}
     for employee in employees:
-        total = 0
         filtered_services = services.filter(for_salary_based=employee.is_fixed_salary)
-        for service in filtered_services:
-            qty = data.get((employee.id, service.id), 0)
-            total += qty * float(service.price)
-        summary[employee.id] = total
+        quantities = {sid: data.get((employee.id, sid), 0) for sid in [s.id for s in filtered_services]}
+        summary[employee.id] = float(calculate_service_sum(filtered_services, quantities))
 
     departments = Department.objects.all()
 
@@ -257,9 +217,7 @@ def export_services_xlsx(request):
     services = Service.objects.all()
     records = EmployeeServiceRecord.objects.filter(month=first_day)
 
-    data = {}
-    for r in records:
-        data[(r.employee.id, r.service.id)] = r.quantity
+    raw_data = build_service_data(records)
 
     wb = openpyxl.Workbook()
     ws = wb.active
@@ -273,25 +231,16 @@ def export_services_xlsx(request):
 
     for emp in employees:
         row = [emp.full_name, emp.department.name, emp.position.name]
-        total = 0
+        quantities = {s.id: raw_data.get((emp.id, s.id), 0) for s in services}
         for s in services:
-            qty = data.get((emp.id, s.id), 0)
-            row.append(qty)
-            total += qty * float(s.price)
-        row.append(round(total, 2))
+            row.append(quantities.get(s.id, 0))
+        total = calculate_service_sum(services, quantities)
+        row.append(round(float(total), 2))
         ws.append(row)
 
-    for col in ws.columns:
-        max_len = max((len(str(cell.value)) for cell in col), default=0)
-        ws.column_dimensions[col[0].column_letter].width = max_len + 2
-
-    buffer = BytesIO()
-    wb.save(buffer)
-    buffer.seek(0)
-
-    response = HttpResponse(buffer, content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
-    response['Content-Disposition'] = f'attachment; filename="uslugi_{year}_{month:02d}.xlsx"'
-    return response
+    autofit_columns(ws)
+    filename = f"uslugi_{year}_{month:02d}.xlsx"
+    return workbook_to_response(wb, filename)
 
 
 def export_salary_report_xlsx(request):
@@ -300,22 +249,11 @@ def export_salary_report_xlsx(request):
     days_in_month = monthrange(year, month)[1]
 
     employees = get_employees_queryset()
-    schedule = WorkSchedule.objects.filter(date__year=year, date__month=month)
     records = EmployeeServiceRecord.objects.filter(month=first_day)
     services = Service.objects.all()
 
-    schedule_map = {}
-
-    # Получаем смены на последний день предыдущего месяца
-    prev_month_last_date = first_day.replace(day=1) - timedelta(days=1)
-    prev_schedules = WorkSchedule.objects.filter(date=prev_month_last_date)
-    last_shift_map = {s.employee_id: s.shift for s in prev_schedules}
-    for s in schedule:
-        schedule_map.setdefault(s.employee_id, {})[s.date.day] = s.shift
-
-    service_data = {}
-    for r in records:
-        service_data.setdefault(r.employee.id, {})[r.service.id] = r.quantity
+    schedule_map, _ = get_schedule_maps(first_day)
+    service_data = build_service_data(records)
 
     wb = openpyxl.Workbook()
     ws = wb.active
@@ -332,16 +270,13 @@ def export_salary_report_xlsx(request):
 
     for emp in employees:
         shifts = schedule_map.get(emp.id, {})
-        day_count = sum(1 for shift in shifts.values() if shift == "day")
-        night_count = sum(1 for shift in shifts.values() if shift == "night")
-        salary_shifts = day_count * float(emp.day_shift_rate) + night_count * float(emp.night_shift_rate)
+        day_count, night_count = count_shifts(shifts)
+        salary_shifts = calculate_shift_salary(emp, day_count, night_count)
 
-        service_sum = 0
-        for s in services:
-            qty = service_data.get(emp.id, {}).get(s.id, 0)
-            service_sum += qty * float(s.price)
+        quantities = service_data.get(emp.id, {})
+        service_sum = calculate_service_sum(services, quantities)
 
-        total = round(salary_shifts + service_sum, 2)
+        total = round(float(salary_shifts + service_sum), 2)
 
         ws.append([
             emp.full_name,
@@ -349,22 +284,14 @@ def export_salary_report_xlsx(request):
             emp.position.name,
             day_count,
             night_count,
-            round(salary_shifts, 2),
-            round(service_sum, 2),
+            round(float(salary_shifts), 2),
+            round(float(service_sum), 2),
             total
         ])
 
-    for col in ws.columns:
-        max_len = max((len(str(cell.value)) for cell in col), default=0)
-        ws.column_dimensions[col[0].column_letter].width = max_len + 2
-
-    buffer = BytesIO()
-    wb.save(buffer)
-    buffer.seek(0)
-
-    response = HttpResponse(buffer, content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
-    response['Content-Disposition'] = f'attachment; filename="zarplata_{year}_{month:02d}.xlsx"'
-    return response
+    autofit_columns(ws)
+    filename = f"zarplata_{year}_{month:02d}.xlsx"
+    return workbook_to_response(wb, filename)
 
 
 def report_view(request):
@@ -378,21 +305,11 @@ def report_view(request):
     if selected_department:
         employees = employees.filter(department_id=selected_department)
 
-    schedule = WorkSchedule.objects.filter(date__year=year, date__month=month)
-    schedule_map = {}
-
-    # Получаем смены на последний день предыдущего месяца
-    prev_month_last_date = first_day.replace(day=1) - timedelta(days=1)
-    prev_schedules = WorkSchedule.objects.filter(date=prev_month_last_date)
-    last_shift_map = {s.employee_id: s.shift for s in prev_schedules}
-    for s in schedule:
-        schedule_map.setdefault(s.employee_id, {})[s.date.day] = s.shift
+    schedule_map, last_shift_map = get_schedule_maps(first_day)
 
     services = Service.objects.all()
     records = EmployeeServiceRecord.objects.filter(month=first_day)
-    service_data = {}
-    for r in records:
-        service_data.setdefault(r.employee.id, {})[r.service.id] = r.quantity
+    service_data = build_service_data(records)
 
     salary_summary = []
     working_days_total = get_working_days(year, month)
@@ -400,19 +317,16 @@ def report_view(request):
 
     for emp in employees:
         shifts = schedule_map.get(emp.id, {})
-        day_count = sum(1 for d, s in shifts.items() if s == "day")
-        night_count = sum(1 for d, s in shifts.items() if s == "night")
-        total_shift_salary = day_count * float(emp.day_shift_rate) + night_count * float(emp.night_shift_rate)
+        day_count, night_count = count_shifts(shifts)
+        total_shift_salary = calculate_shift_salary(emp, day_count, night_count)
 
-        service_sum = 0
-        for s in services:
-            qty = service_data.get(emp.id, {}).get(s.id, 0)
-            service_sum += qty * float(s.price)
+        quantities = service_data.get(emp.id, {})
+        service_sum = calculate_service_sum(services, quantities)
 
         if emp.is_fixed_salary:
             worked_days = sum(1 for d, s in shifts.items() if s in ["day", "night"])
             salary_base = (float(emp.fixed_salary) / working_days_total) * worked_days if working_days_total else 0
-            total_salary = salary_base + float(emp.bonus) + service_sum
+            total_salary = salary_base + float(emp.bonus) + float(service_sum)
 
             if report_type == "advance":
                 worked_days_1_15 = sum(1 for d, s in shifts.items() if s in ["day", "night"] and d <= mid_month)
@@ -427,14 +341,14 @@ def report_view(request):
                 })
                 continue
         else:
-            total_salary = total_shift_salary + service_sum
+            total_salary = float(total_shift_salary + service_sum)
 
         salary_summary.append({
             "employee": emp,
             "day": day_count,
             "night": night_count,
-            "shifts_sum": round(total_shift_salary),
-            "services_sum": round(service_sum),
+            "shifts_sum": round(float(total_shift_salary)),
+            "services_sum": round(float(service_sum)),
             "total": round(total_salary),
         })
 
@@ -445,9 +359,6 @@ def report_view(request):
         "report_type": report_type,
         "salary_summary": salary_summary,
     })
-def get_working_days(year, month):
-    total_days = monthrange(year, month)[1]
-    return sum(1 for d in range(1, total_days + 1) if date(year, month, d).weekday() < 5)
 
 def export_salary_full_xlsx(request):
     employees = get_employees_queryset()
@@ -470,13 +381,11 @@ def generate_salary_report(request, employees, full_month=True):
     if selected_department:
         employees = employees.filter(department_id=selected_department)
 
-    schedule = WorkSchedule.objects.filter(date__year=year, date__month=month)
+    schedule_map, _ = get_schedule_maps(first_day)
     records = EmployeeServiceRecord.objects.filter(month=first_day)
     services = Service.objects.all()
 
-    service_data = {}
-    for r in records:
-        service_data.setdefault(r.employee.id, {})[r.service.id] = r.quantity
+    service_data = build_service_data(records)
 
     wb = Workbook()
     ws = wb.active
@@ -488,15 +397,14 @@ def generate_salary_report(request, employees, full_month=True):
         cell.font = Font(bold=True)
 
     for emp in employees:
-        shifts = {s.date.day: s.shift for s in schedule if s.employee_id == emp.id}
+        shifts = schedule_map.get(emp.id, {})
 
         if full_month:
             period_days = range(1, days_in_month + 1)
         else:
             period_days = range(1, 16)  # с 1 по 15
 
-        day_count = sum(1 for d in period_days if shifts.get(d) == "day")
-        night_count = sum(1 for d in period_days if shifts.get(d) == "night")
+        day_count, night_count = count_shifts(shifts, period_days)
 
         if emp.is_fixed_salary:
             total_days = sum(1 for d in range(1, days_in_month + 1) if shifts.get(d) in ["day", "night"])
@@ -504,12 +412,10 @@ def generate_salary_report(request, employees, full_month=True):
             base = (emp.fixed_salary or 0) / total_days if total_days else 0
             salary_shift_sum = round(base * worked_days, 2)
         else:
-            salary_shift_sum = round(day_count * float(emp.day_shift_rate) + night_count * float(emp.night_shift_rate), 2)
+            salary_shift_sum = round(float(calculate_shift_salary(emp, day_count, night_count)), 2)
 
-        service_sum = 0
-        for s in services:
-            qty = service_data.get(emp.id, {}).get(s.id, 0)
-            service_sum += qty * float(s.price)
+        quantities = service_data.get(emp.id, {})
+        service_sum = calculate_service_sum(services, quantities)
 
         bonus = float(emp.bonus or 0) if full_month else 0
         total = Decimal(salary_shift_sum) + (Decimal(service_sum) if full_month else Decimal(0)) + Decimal(bonus)
@@ -527,16 +433,8 @@ def generate_salary_report(request, employees, full_month=True):
         ])
 
     # автоширина
-    for col in ws.columns:
-        ws.column_dimensions[col[0].column_letter].width = max(len(str(c.value)) for c in col) + 2
-
-    from io import BytesIO
-    output = BytesIO()
-    wb.save(output)
-    output.seek(0)
+    autofit_columns(ws)
 
     filename = f"{'avans' if not full_month else 'zarplata'}_{year}_{month:02d}.xlsx"
-    response = HttpResponse(output, content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
-    response["Content-Disposition"] = f"attachment; filename={filename}"
-    return response
+    return workbook_to_response(wb, filename)
 
