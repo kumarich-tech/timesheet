@@ -1,6 +1,9 @@
 from datetime import date
-from django.test import TestCase
+from io import BytesIO
+
+from django.test import TestCase, RequestFactory
 from django.urls import reverse
+import openpyxl
 
 from .models import (
     Department,
@@ -11,6 +14,9 @@ from .models import (
     EmployeeServiceRecord,
     ScheduleTemplate,
 )
+
+from helpers.utils import parse_month
+from services.payroll import calculate_shift_salary, calculate_service_sum
 
 
 class TimesheetViewTests(TestCase):
@@ -81,3 +87,101 @@ class ServicesViewTests(TestCase):
             employee=self.employee, service=self.service, month=month_first
         )
         self.assertEqual(record.quantity, 2)
+
+
+class ParseMonthTests(TestCase):
+    def setUp(self):
+        self.factory = RequestFactory()
+
+    def test_valid_month(self):
+        request = self.factory.get("/", {"month": "2024-05"})
+        result = parse_month(request)
+        self.assertEqual(result, date(2024, 5, 1))
+
+    def test_invalid_month_returns_current(self):
+        today = date.today()
+        request = self.factory.get("/", {"month": "invalid"})
+        result = parse_month(request)
+        self.assertEqual(result, date(today.year, today.month, 1))
+
+    def test_no_month_returns_current(self):
+        today = date.today()
+        request = self.factory.get("/")
+        result = parse_month(request)
+        self.assertEqual(result, date(today.year, today.month, 1))
+
+
+class ExcelExportTests(TestCase):
+    def setUp(self):
+        self.department = Department.objects.create(name="Dep")
+        self.position = Position.objects.create(name="Worker")
+        self.emp1 = Employee.objects.create(
+            full_name="John Doe", department=self.department, position=self.position
+        )
+        self.emp2 = Employee.objects.create(
+            full_name="Jane Smith", department=self.department, position=self.position
+        )
+        self.service = Service.objects.create(name="Test Service", price=100)
+
+    def _load_workbook(self, response):
+        return openpyxl.load_workbook(BytesIO(response.content))
+
+    def test_timesheet_export_dimensions(self):
+        url = reverse("export_timesheet") + "?month=2024-01"
+        resp = self.client.get(url)
+        self.assertEqual(resp.status_code, 200)
+        wb = self._load_workbook(resp)
+        ws = wb.active
+        self.assertEqual(ws.max_row, Employee.objects.count() + 1)
+        self.assertEqual(
+            ws.max_column,
+            3 + 31 + 3,  # 2024-01 has 31 days
+        )
+
+    def test_services_export_dimensions(self):
+        url = reverse("export_services") + "?month=2024-01"
+        resp = self.client.get(url)
+        self.assertEqual(resp.status_code, 200)
+        wb = self._load_workbook(resp)
+        ws = wb.active
+        self.assertEqual(ws.max_row, Employee.objects.count() + 1)
+        self.assertEqual(ws.max_column, 3 + Service.objects.count() + 1)
+
+    def test_salary_report_export_dimensions(self):
+        url = reverse("export_salary_report") + "?month=2024-01"
+        resp = self.client.get(url)
+        self.assertEqual(resp.status_code, 200)
+        wb = self._load_workbook(resp)
+        ws = wb.active
+        self.assertEqual(ws.max_row, Employee.objects.count() + 1)
+        self.assertEqual(ws.max_column, 8)
+
+
+class PayrollCalculationTests(TestCase):
+    def setUp(self):
+        self.department = Department.objects.create(name="Dep")
+        self.position = Position.objects.create(name="Worker")
+        self.fixed_emp = Employee.objects.create(
+            full_name="Fixed", department=self.department, position=self.position,
+            is_fixed_salary=True, fixed_salary=30000, bonus=5000
+        )
+        self.piece_emp = Employee.objects.create(
+            full_name="Piece", department=self.department, position=self.position,
+            day_shift_rate=1000, night_shift_rate=1500
+        )
+        self.service_a = Service.objects.create(name="A", price=100)
+        self.service_b = Service.objects.create(name="B", price=50)
+
+    def test_fixed_employee_salary(self):
+        salary = calculate_shift_salary(self.fixed_emp, 5, 3)
+        self.assertEqual(salary, 35000)
+
+    def test_piece_employee_salary(self):
+        salary = calculate_shift_salary(self.piece_emp, 2, 1)
+        self.assertEqual(salary, 3500)
+
+    def test_calculate_service_sum(self):
+        qty = {self.service_a.id: 3, self.service_b.id: 2}
+        result = calculate_service_sum(Service.objects.all(), qty)
+        self.assertEqual(result, 400)
+
