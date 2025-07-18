@@ -41,7 +41,7 @@
         <tr>
           <th class="border px-2 py-2 text-left w-[200px] font-semibold">Сотрудник</th>
           {% for info in days_info %}
-            <th class="border px-2 py-1 text-center w-[48px] font-sm {% if info.is_today %}bg-yellow-200{% elif info.is_weekend %}bg-gray-200{% endif %}">
+            <th class="border px-2 py-1 text-center w-[48px] font-sm {% if info.is_today %}bg-yellow-200 border-2 border-yellow-500{% elif info.is_weekend %}bg-gray-200{% endif %}">
               <div>{{ info.num }}</div>
               <div class="text-[10px] text-gray-600">{{ info.weekday }}</div>
             </th>
@@ -56,7 +56,7 @@
         <tr class="hover:bg-gray-50 text-sm">
           <td class="border px-3 py-1 text-left whitespace-nowrap text-black">{{ employee.full_name }}</td>
           {% for info in days_info %}
-            <td class="border px-1 py-1 text-center {% if info.is_weekend %}bg-gray-50{% endif %}">
+            <td class="border px-1 py-1 text-center {% if info.is_today %}border-2 border-yellow-500 bg-yellow-100{% elif info.is_weekend %}bg-gray-50{% endif %}">
               <div class="relative">
                 {% with val=schedule|get_item:employee.id|get_item:info.num %}
                   <button type="button"
