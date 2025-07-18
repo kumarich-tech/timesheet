@@ -168,6 +168,62 @@ def export_timesheet_xlsx(request):
     filename = f"tabel_{year}_{month:02d}.xlsx"
     return workbook_to_response(wb, filename)
 
+
+def import_timesheet_view(request):
+    """Import work schedules from uploaded Excel file."""
+    first_day = parse_month(request)
+    year, month = first_day.year, first_day.month
+    days_in_month = monthrange(year, month)[1]
+
+    if request.method == "POST" and request.FILES.get("xlsx_file"):
+        wb = openpyxl.load_workbook(request.FILES["xlsx_file"])
+        ws = wb.active
+
+        shift_map = {
+            "Д": "day",
+            "д": "day",
+            "Н": "night",
+            "н": "night",
+            "В": "weekend",
+            "в": "weekend",
+            "О": "vacation",
+            "о": "vacation",
+            "Б": "sick",
+            "б": "sick",
+            "П": "partial",
+            "п": "partial",
+            "Нп": "partial",
+            "нп": "partial",
+            "НП": "partial",
+        }
+
+        for row in ws.iter_rows(min_row=2):
+            full_name = str(row[0].value).strip() if row[0].value else None
+            if not full_name:
+                continue
+            try:
+                employee = Employee.objects.get(full_name=full_name)
+            except Employee.DoesNotExist:
+                continue
+
+            for day in range(1, min(days_in_month, len(row) - 1) + 1):
+                raw = row[day].value
+                if raw is None:
+                    continue
+                shift = shift_map.get(str(raw).strip())
+                if not shift:
+                    continue
+                date_obj = date(year, month, day)
+                WorkSchedule.objects.update_or_create(
+                    employee=employee,
+                    date=date_obj,
+                    defaults={"shift": shift},
+                )
+
+        return redirect(f"{request.path}?month={first_day.strftime('%Y-%m')}")
+
+    return render(request, "core/import_timesheet.html", {"month": first_day})
+
 def services_view(request):
     first_day = parse_month(request)
     year, month = first_day.year, first_day.month
